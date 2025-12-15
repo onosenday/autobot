@@ -10,8 +10,15 @@ from adb_wrapper import ADBWrapper
 from vision import Vision
 from ocr import OCR
 from logger import GoldLogger
+from enum import Enum, auto
 
-class RealRacingBot:
+class BotState(Enum):
+    IDLE = auto()
+    PRE_AD_CONFIRM = auto()
+    WATCHING_AD = auto()
+    REWARD_RECOVERY = auto()
+    NO_ADS_RECOVER = auto()
+    SURVEY_HANDLER = auto()
     def __init__(self, stop_event=None, log_callback=None, image_callback=None, stats_callback=None):
         self.adb = ADBWrapper()
         self.vision = Vision()
@@ -25,6 +32,10 @@ class RealRacingBot:
         self.session_ads = 0
         self.session_gold = 0
         self.last_reward_time = 0 # Debounce for rewards
+        
+        # State Machine
+        self.state = BotState.UNKNOWN
+        self.state_data = {} # To store transient state data (e.g. tz search term)
 
         # UI Callbacks
         self.stop_event = stop_event
@@ -573,7 +584,9 @@ class RealRacingBot:
                 self.log(f"Zona horaria detectada: {tz_offset}")
                 if "+1400" in tz_offset:
                     return "KIRITIMATI"
-                return "MADRID"
+                if "+0100" in tz_offset or "+0200" in tz_offset:
+                    return "MADRID"
+                return "OTHER"
         except Exception as e:
             self.log(f"Error check timezone: {e}")
         return "UNKNOWN"
@@ -770,129 +783,350 @@ class RealRacingBot:
             self.current_timezone_state = current_tz
         self.log(f"Estado Inicial Zona: {self.current_timezone_state}")
 
-        last_restricted_log_time = 0
+        # Initialize state machine
+        self.state = BotState.UNKNOWN
+        self.last_state = None
+        self.state_data = {}
 
         while not self.is_stopped():
-            # 0. Chequeo de Contexto Global (Rescue)
-            if self.ensure_game_context():
-                time.sleep(3) # Esperar a que el juego cargue/vuelva
-                continue
+            self.run_state_machine()
+            time.sleep(0.1) # Pequeña pausa para no saturar CPU
 
-            # Time Check (00:00 - 12:00)
+    def run_state_machine(self):
+        """Dispatcher de la máquina de estados."""
+        # Log de transición
+        if self.state != self.last_state:
+            self.log(f"🔄 CAMBIO ESTADO: {self.last_state.name if self.last_state else 'None'} -> {self.state.name}")
+            self.last_state = self.state
+
+        # 0. Chequeo de Contexto Global (Rescue) - Excepto si estamos cambiando zona
+        if "TZ_" not in self.state.name:
+             if self.ensure_game_context():
+                 time.sleep(3)
+                 return
+
+        # 1. Dispatch
+        if self.state == BotState.UNKNOWN:
+            self.handle_unknown()
+        elif self.state == BotState.GAME_LOBBY:
+            self.handle_game_lobby()
+        elif self.state == BotState.AD_INTERMEDIATE:
+            self.handle_ad_intermediate()
+        elif self.state == BotState.AD_WATCHING:
+            self.handle_ad_watching()
+        elif self.state == BotState.REWARD_SCREEN:
+            self.handle_reward_screen_state()
+        elif "TZ_" in self.state.name:
+            self.handle_timezone_sequence()
+
+    def handle_unknown(self):
+        """Estado inicial o de recuperación."""
+        # Por defecto asumimos Lobby si el juego está abierto
+        self.log("Estado UNKNOWN -> Asumiendo GAME_LOBBY...")
+        self.state = BotState.GAME_LOBBY
+
+    def handle_game_lobby(self):
+        """
+        Buscando activo (Moneda, Botón Anuncio).
+        Transiciones:
+        -> AD_WATCHING (Moneda/Cloud click)
+        -> TZ_INIT (No ads / Timeout)
+        """
+        screenshot = self.adb.take_screenshot()
+        self.update_live_view(screenshot)
+
+        # 1. Pantalla Intermedia (Confirmar) - A veces salta directo
+        match_inter = self.vision.find_template(screenshot, os.path.join(ASSETS_DIR, INTERMEDIATE_TEMPLATE))
+        if match_inter:
+            self.log("Detectada Pantalla Intermedia desde Lobby.")
+            self.state = BotState.AD_INTERMEDIATE
+            return
+
+        # 4. Moneda Normal
+        match_coin = self.vision.find_template(screenshot, os.path.join(ASSETS_DIR, COIN_ICON_TEMPLATE))
+        if match_coin:
+             # Verificar timezone actual real (Seguridad detectada en loop antiguo)
+             real_tz = self.check_device_timezone()
+             if real_tz != "MADRID":
+                  self.log(f"⚠ Moneda visible pero Zona NO es MADRID (Es '{real_tz}'). Forzando cambio...")
+                  self.state_data["target_zone"] = "MADRID"
+                  self.state = BotState.TZ_INIT
+                  return
+             
+             # Click en moneda
+             self.interact_with_coin(screenshot, match_coin)
+             time.sleep(1.5)
+             # Asumimos que tras moneda viene o Intermedia o el Anuncio directo
+             # Dejamos que el siguiente loop decida (lo correcto es pasar a WAIT, pero aquí 
+             # no tenemos estado intermedio "WAITING_FOR_APP", así que AD_WATCHING o AD_INTERMEDIATE
+             # se detectarán en el siguiente ciclo).
+             # Para forzar estructura, pasamos a AD_INTERMEDIATE que chequeará si está o no.
+             self.state = BotState.AD_INTERMEDIATE
+             return
+
+        # 5. Sin Oro / No More Ads
+        match_no_gold = self.vision.find_template(screenshot, os.path.join(ASSETS_DIR, NO_MORE_GOLD_TEMPLATE))
+        if match_no_gold:
+            self.log("Detectado 'No hay más anuncios'. Iniciando ciclo Timezone.")
+            # Chequear modo restringido (00-12)
             now_hour = datetime.datetime.now().hour
-            restricted_mode = (0 <= now_hour < 12)
+            if 0 <= now_hour < 12:
+                 self.log("⏳ MODO RESTRINGIDO: Pausando hasta las 12:00...")
+                 self.state = BotState.UNKNOWN # O un estado SLEEP, pero UNKNOWN reevaluará
+                 time.sleep(60)
+                 return
 
-            if restricted_mode and (time.time() - last_restricted_log_time > 300): # Log cada 5 min
-                self.log("🕒 MODO RESTRINGIDO (00-12h): Proceso no disponible hasta las 12. Solo recolección visible.")
-                last_restricted_log_time = time.time()
+            self.state = BotState.TZ_INIT
+            return
 
-            # 1. Capturar estado
-            screenshot = self.adb.take_screenshot()
-            if screenshot is None:
-                self.log("Error capturando pantalla. Reintentando...")
-                time.sleep(2)
-                continue
+        # Nada detectado
+        # self.log("Lobby: Buscando...")
+        time.sleep(1)
+
+    def handle_ad_intermediate(self):
+        """
+        Pantalla de 'Confirmar' (Nube/Video).
+        Transition -> AD_WATCHING
+        """
+        screenshot = self.adb.take_screenshot()
+        self.update_live_view(screenshot)
+        
+        # Buscar botón confirmar
+        # Primero confirmar que seguimos en la pantalla (o si ya saltó al anuncio)
+        # A veces el click de moneda fue tan rápido que ya estamos viendo el video
+        
+        match_inter = self.vision.find_template(screenshot, os.path.join(ASSETS_DIR, INTERMEDIATE_TEMPLATE))
+        if match_inter:
+             cx, cy, w, h = match_inter
+             match_conf = self.vision.find_template(screenshot, os.path.join(ASSETS_DIR, AD_CONFIRM_TEMPLATE))
+             
+             if match_conf:
+                 bx, by, bw, bh = match_conf
+                 self.device_tap(bx, by)
+             else:
+                 self.device_tap(cx, cy)
+             
+             self.log("Confirmación enviada. Esperando anuncio...")
+             time.sleep(3)
+             self.state = BotState.AD_WATCHING
+             return
+        else:
+             # Si no vemos la intermedia, quizás ya se fue o nunca estuvo
+             self.log("No veo intermedia. Volviendo a checkear Lobby/Watching.")
+             # Fallback a Lobby que redespachará
+             self.state = BotState.GAME_LOBBY
+
+    def handle_ad_watching(self):
+        """
+        Monitorizando anuncio.
+        Transitions:
+        -> REWARD_SCREEN (X cerrada, >> cerrado)
+        -> GAME_LOBBY (Web back, Survey skip)
+        """
+        # La lógica de process_active_ad era bloqueante (while loop).
+        # Para la máquina de estados, deberíamos hacerla no bloqueante o mantener el while dentro 
+        # (mini-bucle de estado) si queremos mantener la lógica de 'stall detection' continua.
+        # Dado que process_active_ad ya es robusta, la llamaremos como "acción de estado" 
+        # que retorna cuando termina el anuncio.
+        
+        # Nota: process_active_ad retorna True si terminó bien (closed), False si falló/timeout
+        result = self.run_ad_watching_logic()
+        
+        if result == "REWARD":
+             self.state = BotState.REWARD_SCREEN
+        elif result == "LOBBY":
+             self.state = BotState.GAME_LOBBY
+        else:
+             self.state = BotState.GAME_LOBBY # Fallback
+
+    def run_ad_watching_logic(self):
+        """Lógica encapsulada de mirar anuncio."""
+        self.log("👀 Estado: WATCHING_AD")
+        start_wait = time.time()
+        ignored_zones = []
+        
+        # Variables Loop Seguridad
+        last_gray = None
+        stall_counter = 0
+        black_screen_counter = 0
+        
+        while time.time() - start_wait < 70: # Timeout
+            if self.is_stopped(): return "LOBBY"
             
-            self.last_screen_shape = screenshot.shape
+            screenshot = self.adb.take_screenshot()
             self.update_live_view(screenshot)
 
-            # 2. Máquina de Estados Reactiva (Prioridad)
-            
-            # Z) PRIORIDAD: Check especial Encuesta Google (Saltar)
-            # Si aparece el diálogo "Saltar", debemos pulsarlo antes de cualquier otra X
+            # 1. Google Survey (Transition -> LOBBY)
             if self.handle_google_survey(screenshot):
-                 self.log("Encuesta gestionada (Prioridad). Continuando...")
-                 continue
+                 self.log("Encuesta Google gestionada. Volviendo a Lobby.")
+                 return "LOBBY"
 
-            # Z.1) PRIORIDAD: Check especial Web/Consentimiento (Back)
+            # 2. Web Consent (Transition -> STAY/LOBBY via Back)
             if self.handle_web_consent(screenshot):
-                 time.sleep(2) # Esperar tras back
+                 time.sleep(2)
+                 continue 
+
+            # 3. Navegador Interno (Web Bar Close)
+            # Transición -> Click -> Esperar X/Cierre (Loop)
+            match_web_close = self.vision.find_template(screenshot, os.path.join(ASSETS_DIR, WEB_BAR_CLOSE_TEMPLATE))
+            if match_web_close:
+                 self.log("Navegador Interno detectado (Bar Close). Click.")
+                 self.device_tap(match_web_close[0], match_web_close[1])
+                 time.sleep(2)
                  continue
-            
-            # A) Pantalla Intermedia (Confirmar Anuncio)
-            match_inter = self.vision.find_template(screenshot, os.path.join(ASSETS_DIR, INTERMEDIATE_TEMPLATE))
-            if match_inter:
-                self.log("Detectada Pantalla Intermedia. Confirmando...")
-                cx, cy, w, h = match_inter
-                match_conf = self.vision.find_template(screenshot, os.path.join(ASSETS_DIR, AD_CONFIRM_TEMPLATE))
-                
-                if match_conf:
-                    bx, by, bw, bh = match_conf
-                    self.device_tap(bx, by)
-                else:
-                    self.device_tap(cx, cy)
-                
-                time.sleep(3) # Esperar a que arranque anuncio y dejar que el próximo loop detecte "Nada" o "X"
-                continue
 
-            # B) Sin Oro (Iniciar Ciclo Timezone O Parar/Esperar)
-            match_no_gold = self.vision.find_template(screenshot, os.path.join(ASSETS_DIR, NO_MORE_GOLD_TEMPLATE))
-            if match_no_gold:
-                if restricted_mode:
-                    self.log("⏳ MODO RESTRINGIDO: 'No More Gold' detectado. Pausando hasta las 12:00...")
-                    while datetime.datetime.now().hour < 12:
-                        if self.is_stopped(): return
-                        for _ in range(60): 
-                            if self.is_stopped(): return
-                            time.sleep(1)
-                        self.log(f"💤 Esperando a las 12:00... (Actual: {datetime.datetime.now().strftime('%H:%M')})")
-                    
-                    self.log("⏰ ¡Horario desbloqueado! Reanudando operaciones.")
-                
-                self.log("Detectado 'No hay más anuncios'. Iniciando truco Kiritimati...")
-                self.handle_timezone_cycle()
-                continue
-                
-            # C) Moneda Normal
-            match_coin = self.vision.find_template(screenshot, os.path.join(ASSETS_DIR, COIN_ICON_TEMPLATE))
-            if match_coin:
-                # Verificar timezone actual real (Seguridad detectada en loop)
-                real_tz = self.check_device_timezone()
-                if real_tz == "KIRITIMATI":
-                     self.log("⚠ Moneda visible pero estamos en KIRITIMATI. Cambiando a MADRID...")
-                     self.perform_timezone_switch("MADRID")
+            # 4. Dynamic X (Transition -> REWARD)
+            match_dynamic = self.vision.find_close_button_dynamic(screenshot, ignored_zones=ignored_zones)
+            if match_dynamic:
+                 self.log("X Detectada. Click.")
+                 cx, cy, w, h = match_dynamic
+                 self.device_tap(cx, cy)
+                 time.sleep(2)
+                 
+                 # --- CHECK FALSO POSITIVO (Resume) ---
+                 # A veces la X es para cerrar el anuncio prematuramente y sale "Seguir viento?"
+                 check_scr = self.adb.take_screenshot()
+                 match_resume = self.vision.find_template(check_scr, os.path.join(ASSETS_DIR, AD_RESUME_TEMPLATE))
+                 if match_resume:
+                     self.log("⚠ Falso positivo X (Detectado 'Seguir Viendo'). Reanudando...")
+                     # Click en "Seguir viendo" (Resume)
+                     rx, ry, rw, rh = match_resume
+                     self.device_tap(rx, ry)
+                     ignored_zones.append((cx, cy, w, h)) # Ignorar esta X en el futuro próximo
+                     time.sleep(1)
                      continue
-                
-                # Click en moneda (No bloqueante)
-                self.interact_with_coin(screenshot, match_coin)
-                time.sleep(1.5) # Esperar transición a Intermedia o Reward
-                continue
+                 # -------------------------------------
 
-            # D) Recompensa atrapada (Check preventivo)
-            # Primero chequear si ya estamos en la recompensa para evitar falsos positivos de FF/X
-            match_reward = None
-            for template_name in REWARD_CLOSE_TEMPLATES:
-                full_path = os.path.join(ASSETS_DIR, template_name)
-                match_reward = self.vision.find_template(screenshot, full_path)
-                if match_reward: break
-            
-            if match_reward:
-                self.log("Detectado cierre de recompensa (Check Prioritario).")
-                self.handle_reward_screen()
-                continue
+                 return "REWARD"
 
-            # E) Anuncio Activo (X Visible)
-            match_x = self.vision.find_close_button_dynamic(screenshot)
-            if match_x:
-                self.log("Detectada 'X' de anuncio. Retomando cierre de anuncio...")
-                self.process_active_ad()
-                continue
-
-            # F) Fast Forward (Solo si NO hay X)
+            # 5. Fast Forward (Transition -> REWARD)
             match_ff = self.vision.find_fast_forward_button(screenshot)
             if match_ff:
-                 self.log("Detectado botón Fast Forward (>> - Dynamic). Click.")
+                 self.log("Fast Forward detectado. Click.")
                  self.device_tap(match_ff[0], match_ff[1])
                  time.sleep(2)
                  continue
-                
-            # Nada detectado
 
-            # Nada detectado
-            self.log("Esperando (Nada detectado)...")
+            # 6. Reward Close Directo (Check)
+            for t_name in REWARD_CLOSE_TEMPLATES:
+                 if self.vision.find_template(screenshot, os.path.join(ASSETS_DIR, t_name)):
+                      self.log("Reward Close detectado directo.")
+                      return "REWARD"
+            
+            # --- CHEQUEOS DE SEGURIDAD (Stall/Black) ---
+            import cv2
+            import numpy as np
+            gray = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
+            
+            # Black Screen
+            if np.mean(gray) < 10:
+                black_screen_counter += 1
+                if black_screen_counter > 6: # ~15s
+                    self.log("⚠ Pantalla negra persistente. Abortando a Lobby.")
+                    self.adb.input_keyevent(4)
+                    return "LOBBY"
+            else:
+                black_screen_counter = 0
+            
+            # Stall Detection (Imagen congelada)
+            if last_gray is not None:
+                score = cv2.matchTemplate(gray, last_gray, cv2.TM_CCOEFF_NORMED)[0][0]
+                if score > 0.98: # Muy similar
+                    stall_counter += 1
+                else:
+                    stall_counter = 0
+               
+                if stall_counter > 10: # ~20-25s congelado
+                    self.log("⚠ Anuncio congelado (Stall). Intentando tap central...")
+                    self.device_tap(int(self.screen_width/2), int(self.screen_height/2))
+                    stall_counter = 0 # Reset para dar chance
+            
+            last_gray = gray
+            # -------------------------------------------
+
             time.sleep(1.5)
+            
+        self.log("Timeout viendo anuncio.")
+        self.adb.input_keyevent(4) # Back
+        return "LOBBY"
+
+    def handle_reward_screen_state(self):
+        """Lectura de oro y cierre."""
+        self.handle_reward_screen() 
+        self.state = BotState.GAME_LOBBY
+
+    def handle_timezone_sequence(self):
+        """Sub-máquina para Timezone."""
+        if self.state == BotState.TZ_INIT:
+             target = self.state_data.get("target_zone")
+             if not target:
+                 current = self.current_timezone_state
+                 target = "KIRITIMATI" if current == "MADRID" else "MADRID"
+             
+             self.state_data["target_zone"] = target
+             self.log(f"Iniciando secuencia TZ hacia: {target}")
+             self.state = BotState.TZ_OPEN_SETTINGS
+
+        elif self.state == BotState.TZ_OPEN_SETTINGS:
+             self.adb._run_command(["am", "start", "-a", "android.settings.DATE_SETTINGS"])
+             time.sleep(1.5)
+             self.state = BotState.TZ_SEARCH_REGION
+             
+        elif self.state == BotState.TZ_SEARCH_REGION:
+             self.log("Avanzando a búsqueda de país...")
+             # En un futuro: Buscar botón lupa/región. Por ahora asumimos flujo directo.
+             self.state = BotState.TZ_INPUT_SEARCH
+             
+        elif self.state == BotState.TZ_INPUT_SEARCH:
+             target = self.state_data["target_zone"]
+             term = "Kiribati" if target == "KIRITIMATI" else "Espana"
+             
+             self.log(f"Escribiendo país: {term}")
+             # Click Search Icon (Fallback coords)
+             self.device_tap(980, 160) 
+             time.sleep(1)
+             self.adb._run_command(["input", "text", term])
+             time.sleep(2)
+             self.state = BotState.TZ_SELECT_COUNTRY
+             
+        elif self.state == BotState.TZ_SELECT_COUNTRY:
+             target = self.state_data["target_zone"]
+             term = "Kiribati" if target == "KIRITIMATI" else "Espana"
+             
+             if self._wait_click_country_result(term):
+                 self.log(f"País {term} seleccionado.")
+                 self.state = BotState.TZ_SELECT_CITY
+             else:
+                 self.log("No encontré país. Reintentando...")
+                 self.state = BotState.GAME_LOBBY
+                 
+        elif self.state == BotState.TZ_SELECT_CITY:
+             target = self.state_data["target_zone"]
+             city = "Kiritimati" if target == "KIRITIMATI" else "Madrid"
+             
+             time.sleep(2)
+             scr = self.adb.take_screenshot()
+             coords = self.ocr.find_text(scr, city)
+             if coords:
+                 self.device_tap(*coords)
+                 self.current_timezone_state = target
+                 self.log(f"Zona cambiada a {city}.")
+                 self.state = BotState.TZ_RETURN_GAME
+             else:
+                 self.log(f"No veo ciudad {city}. Click fallback centro.")
+                 self.device_tap(540, 1000)
+                 self.current_timezone_state = target
+                 self.state = BotState.TZ_RETURN_GAME
+
+        elif self.state == BotState.TZ_RETURN_GAME:
+             self.log("Resumiendo juego (Bring to Front)...")
+             self.adb.input_keyevent(3) # Home
+             time.sleep(1)
+             self.adb._run_command(["am", "start", "-a", "android.intent.action.MAIN", "-n", f"{PACKAGE_NAME}/.MainActivity"])
+             time.sleep(4) # Esperar resume
+             self.state = BotState.GAME_LOBBY
 
 if __name__ == "__main__":
-    # Modo CLI Legacy (si se ejecuta directo)
+    # Modo CLI Legacy
     bot = RealRacingBot()
     bot.run()

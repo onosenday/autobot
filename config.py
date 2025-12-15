@@ -15,6 +15,7 @@ NO_MORE_GOLD_TEMPLATE = "no_more_gold_icon.png"
 INTERMEDIATE_TEMPLATE = "intermediate_screen.png"
 SEARCH_ICON_TEMPLATE = "search_icon.png"
 SEARCH_ICON_TEMPLATE = "search_icon.png"
+WEB_BAR_CLOSE_TEMPLATE = "web_bar_close_v2.png"
 # Lista de botones de cierre de recompensa (para manejar variantes con cursor, etc.)
 REWARD_CLOSE_TEMPLATES = ["reward_close.png", "reward_close_cursor.png"]
 

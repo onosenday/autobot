@@ -14,9 +14,11 @@ AGENTS.md
 PROMPT.md
 *.drawio
 test*
-debug*
 SCRCPY_MANUAL.md
 google_survey*
 analysis_scrcpy_migration*
+debug/
 
-
+!assets/
+!assets/*.png
+!assets/*.jpg
