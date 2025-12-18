@@ -11,6 +11,9 @@ import os
 from datetime import datetime, timedelta
 from adb_wrapper import ADBWrapper
 from logger import GoldLogger
+from ml.trainer import ModelTrainer
+from ml.evaluator import ModelEvaluator
+from ml.monitor import LiveMonitor
 
 
 # Importamos la clase del bot (que refactorizaremos en breve)
@@ -154,6 +157,59 @@ class BotGUI:
         
         # Set initial values
         self.lbl_runtime.config(text="00:00:00")
+        
+        # --- ML Model Card ---
+        ml_card = ttk.Frame(left_panel, style="Card.TLabelframe", padding=2)
+        ml_card.pack(fill=tk.X, pady=(15, 0))
+        
+        ml_inner = tk.Frame(ml_card, bg="#243B53", padx=10, pady=10)
+        ml_inner.pack(fill=tk.BOTH, expand=True)
+        
+        # ML Header
+        ml_header = tk.Frame(ml_inner, bg="#243B53")
+        ml_header.pack(fill=tk.X, pady=(0, 8))
+        ttk.Label(ml_header, text="ML MODEL", style="Card.TLabelframe.Label", background="#243B53").pack(side=tk.LEFT)
+        ttk.Label(ml_header, text="(experimental)", style="Stat.TLabel", background="#243B53", foreground="#FC8181", font=("Segoe UI", 8)).pack(side=tk.LEFT, padx=(5,0))
+        
+        # ML Buttons Row
+        ml_btn_frame = tk.Frame(ml_inner, bg="#243B53")
+        ml_btn_frame.pack(fill=tk.X, pady=(0, 8))
+        
+        self.btn_ml_train = tk.Button(ml_btn_frame, text="Entrenar", font=("Segoe UI", 9),
+                                     bg="#2B6CB0", fg="white", bd=0, padx=8, pady=4,
+                                     cursor="hand2", command=self._ml_train)
+        self.btn_ml_train.pack(side=tk.LEFT, padx=(0, 5))
+        
+        self.btn_ml_test = tk.Button(ml_btn_frame, text="Test", font=("Segoe UI", 9),
+                                    bg="#38A169", fg="white", bd=0, padx=8, pady=4,
+                                    cursor="hand2", command=self._ml_test)
+        self.btn_ml_test.pack(side=tk.LEFT, padx=(0, 5))
+        
+        self.btn_ml_activate = tk.Button(ml_btn_frame, text="Activar", font=("Segoe UI", 9),
+                                        bg="#805AD5", fg="white", bd=0, padx=8, pady=4,
+                                        cursor="hand2", command=self._ml_toggle_monitor)
+        self.btn_ml_activate.pack(side=tk.LEFT)
+        
+        # ML Stats
+        def add_ml_stat(parent, label, initial="--", color="#D9E2EC"):
+            frame = tk.Frame(parent, bg="#243B53")
+            frame.pack(fill=tk.X, pady=1)
+            ttk.Label(frame, text=label, style="Stat.TLabel", background="#243B53", font=("Segoe UI", 8)).pack(side=tk.LEFT)
+            lbl = tk.Label(frame, text=initial, bg="#243B53", fg=color, font=("Segoe UI", 9, "bold"))
+            lbl.pack(side=tk.RIGHT)
+            return lbl
+        
+        self.lbl_ml_accuracy = add_ml_stat(ml_inner, "Accuracy:", "N/A", "#63B3ED")
+        self.lbl_ml_samples = add_ml_stat(ml_inner, "Capturas nuevas:", "0", "#A0AEC0")
+        self.lbl_ml_concordance = add_ml_stat(ml_inner, "Concordancia:", "--", "#A0AEC0")
+        
+        # ML Status/Progress
+        self.lbl_ml_status = tk.Label(ml_inner, text="", bg="#243B53", fg="#829AB1", 
+                                      font=("Segoe UI", 8), wraplength=180, justify=tk.LEFT)
+        self.lbl_ml_status.pack(fill=tk.X, pady=(5, 0))
+        
+        # Initialize ML components
+        self._init_ml_components()
 
         # Font override removed to use style defaults
 
@@ -596,6 +652,171 @@ class BotGUI:
         import sqlite3
         
         refresh_calendar()
+
+
+    def _init_ml_components(self):
+        """Inicializa componentes ML."""
+        try:
+            self.ml_trainer = ModelTrainer()
+            self.ml_evaluator = ModelEvaluator()
+            self.ml_monitor = LiveMonitor()
+            self._update_ml_stats()
+            # Iniciar actualizacion periodica (cada 5 segundos)
+            self._schedule_ml_stats_update()
+        except Exception as e:
+            print(f"Error inicializando ML: {e}")
+            self.ml_trainer = None
+            self.ml_evaluator = None
+            self.ml_monitor = None
+    
+    def _schedule_ml_stats_update(self):
+        """Actualiza stats ML periodicamente."""
+        self._update_ml_stats()
+        self.root.after(5000, self._schedule_ml_stats_update)  # Cada 5 segundos
+    
+    def _update_ml_stats(self):
+        """Actualiza estadisticas ML en la GUI."""
+        if not hasattr(self, 'ml_trainer') or not self.ml_trainer:
+            return
+        
+        # Accuracy
+        if hasattr(self.ml_evaluator, 'accuracy') and self.ml_evaluator.accuracy > 0:
+            self.lbl_ml_accuracy.config(text=f"{self.ml_evaluator.accuracy:.1f}%")
+        
+        # Capturas nuevas
+        samples = self.ml_trainer.get_sample_count()
+        color = "#68D391" if samples >= 500 else "#FC8181"  # Verde si >500, rojo si <500
+        self.lbl_ml_samples.config(text=str(samples), fg=color)
+        
+        # Concordancia (si monitor activo)
+        if hasattr(self, 'ml_monitor') and self.ml_monitor and self.ml_monitor.is_active:
+            stats = self.ml_monitor.get_stats()
+            conc = stats.get('concordance', 0)
+            if conc >= 99:
+                color = "#68D391"  # Verde
+            elif conc >= 97:
+                color = "#63B3ED"  # Azul
+            else:
+                color = "#FC8181"  # Rojo
+            self.lbl_ml_concordance.config(text=f"{conc:.1f}%", fg=color)
+        else:
+            self.lbl_ml_concordance.config(text="--", fg="#A0AEC0")
+    
+    def _ml_train(self):
+        """Inicia entrenamiento del modelo."""
+        if not self.ml_trainer:
+            self.lbl_ml_status.config(text="Error: ML no inicializado")
+            return
+        
+        if self.ml_trainer.is_training:
+            self.lbl_ml_status.config(text="Entrenamiento en curso...")
+            return
+        
+        samples = self.ml_trainer.get_sample_count()
+        if samples < 10:
+            self.lbl_ml_status.config(text=f"Error: Solo {samples} muestras (min 10)")
+            return
+        
+        self.btn_ml_train.config(state=tk.DISABLED)
+        self.lbl_ml_status.config(text="Iniciando entrenamiento...")
+        
+        def on_complete(success, accuracy):
+            self.root.after(0, lambda: self._on_training_complete(success, accuracy))
+        
+        self.ml_trainer.train(epochs=10, callback=on_complete)
+        
+        # Iniciar timer para actualizar progreso
+        self._update_training_progress()
+    
+    def _update_training_progress(self):
+        """Actualiza progreso de entrenamiento."""
+        if not self.ml_trainer or not self.ml_trainer.is_training:
+            return
+        
+        # Obtener logs
+        logs = self.ml_trainer.get_logs()
+        for log in logs:
+            self.lbl_ml_status.config(text=log)
+        
+        # Actualizar cada 500ms
+        self.root.after(500, self._update_training_progress)
+    
+    def _on_training_complete(self, success, accuracy):
+        """Callback cuando termina el entrenamiento."""
+        self.btn_ml_train.config(state=tk.NORMAL)
+        if success:
+            self.lbl_ml_status.config(text=f"Completado! Accuracy: {accuracy:.1f}%")
+            self.lbl_ml_accuracy.config(text=f"{accuracy:.1f}%")
+        else:
+            self.lbl_ml_status.config(text="Error en entrenamiento")
+        self._update_ml_stats()
+    
+    def _ml_test(self):
+        """Ejecuta test del modelo."""
+        if not self.ml_evaluator:
+            self.lbl_ml_status.config(text="Error: ML no inicializado")
+            return
+        
+        self.lbl_ml_status.config(text="Evaluando modelo...")
+        self.btn_ml_test.config(state=tk.DISABLED)
+        
+        def _run_test():
+            result = self.ml_evaluator.evaluate()
+            self.root.after(0, lambda: self._on_test_complete(result))
+        
+        import threading
+        threading.Thread(target=_run_test, daemon=True).start()
+    
+    def _on_test_complete(self, result):
+        """Callback cuando termina el test."""
+        self.btn_ml_test.config(state=tk.NORMAL)
+        if "error" in result:
+            self.lbl_ml_status.config(text=f"Error: {result['error']}")
+        else:
+            acc = result.get('accuracy', 0)
+            total = result.get('total_samples', 0)
+            self.lbl_ml_status.config(text=f"Test: {acc:.1f}% ({total} muestras)")
+            self.lbl_ml_accuracy.config(text=f"{acc:.1f}%")
+    
+    def _ml_toggle_monitor(self):
+        """Activa/desactiva monitor en tiempo real."""
+        if not self.ml_monitor:
+            self.lbl_ml_status.config(text="Error: ML no inicializado")
+            return
+        
+        if self.ml_monitor.is_active:
+            self.ml_monitor.stop()
+            self.btn_ml_activate.config(text="Activar", bg="#805AD5")
+            self.lbl_ml_status.config(text="Monitor detenido")
+            self.lbl_ml_concordance.config(text="--", fg="#A0AEC0")
+        else:
+            if not self.ml_monitor.model.is_trained:
+                self.lbl_ml_status.config(text="Error: Modelo no entrenado")
+                return
+            self.ml_monitor.start()
+            self.btn_ml_activate.config(text="Detener", bg="#E53E3E")
+            self.lbl_ml_status.config(text="Monitor activo")
+            self._update_monitor_stats()
+    
+    def _update_monitor_stats(self):
+        """Actualiza estadisticas del monitor."""
+        if not self.ml_monitor or not self.ml_monitor.is_active:
+            return
+        
+        stats = self.ml_monitor.get_stats()
+        conc = stats.get('concordance', 0)
+        
+        if conc >= 99:
+            color = "#68D391"  # Verde
+        elif conc >= 97:
+            color = "#63B3ED"  # Azul
+        else:
+            color = "#FC8181"  # Rojo
+        
+        self.lbl_ml_concordance.config(text=f"{conc:.1f}%", fg=color)
+        
+        # Actualizar cada segundo
+        self.root.after(1000, self._update_monitor_stats)
 
     def _reset_buttons(self):
         self.is_bot_running = False

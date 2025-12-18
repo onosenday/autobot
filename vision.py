@@ -211,7 +211,7 @@ class Vision:
                 res = cv2.matchTemplate(roi_img, tmpl_bgr, cv2.TM_CCOEFF_NORMED)
                 min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
                 
-                if max_val > 0.55:
+                if max_val > 0.70:  # Threshold aumentado para reducir falsos positivos
                     h, w = tmpl_bgr.shape[:2]
                     global_x = x1 + max_loc[0] + w // 2
                     global_y = y1 + max_loc[1] + h // 2
