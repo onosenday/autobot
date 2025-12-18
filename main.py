@@ -578,7 +578,7 @@ class RealRacingBot:
         stall_counter = 0
         black_screen_counter = 0
         
-        while time.time() - start_wait < 70: # Timeout
+        while time.time() - start_wait < 91: # Timeout
             if self.is_stopped(): return "LOBBY"
             
             screenshot = self.adb.take_screenshot()
