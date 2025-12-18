@@ -10,6 +10,7 @@ from adb_wrapper import ADBWrapper
 from vision import Vision
 from ocr import OCR
 from logger import GoldLogger
+from ml_logger import MLLogger, calculate_reward
 from enum import Enum, auto
 
 class BotState(Enum):
@@ -26,6 +27,29 @@ class BotState(Enum):
     TZ_SELECT_COUNTRY = auto()
     TZ_SELECT_CITY = auto()
     TZ_RETURN_GAME = auto()
+
+
+class Action(Enum):
+    """Acciones discretas que puede tomar el bot."""
+    WAIT = 0
+    CLICK_COIN = 1
+    CLICK_AD_CONFIRM = 2
+    CLICK_CLOSE_X = 3
+    CLICK_FAST_FORWARD = 4
+    CLICK_REWARD_CLOSE = 5
+    PRESS_BACK = 6
+    # Timezone actions
+    CLICK_REGION = 10
+    CLICK_SELECCIONAR = 11
+    CLICK_SEARCH_FIELD = 12
+    CLICK_COUNTRY = 13
+    CLICK_CITY = 14
+    PRESS_HOME = 15
+    # Rescue actions
+    CLICK_WEB_CLOSE = 20
+    CLICK_SURVEY_SKIP = 21
+    # No action / Unknown
+    NONE = 99
 
 class RealRacingBot:
     def __init__(self, stop_event=None, log_callback=None, image_callback=None, stats_callback=None):
@@ -45,6 +69,12 @@ class RealRacingBot:
         # State Machine
         self.state = BotState.UNKNOWN
         self.state_data = {} # To store transient state data (e.g. tz search term)
+        
+        # ML Logger for training data
+        self.ml_logger = MLLogger()
+        self.ml_enabled = True  # Toggle para activar/desactivar logging ML
+        self.current_action = Action.NONE
+        self.last_screenshot = None
         
         # Screen Dims (Lazy load or default)
         self.screen_width = 2340 
@@ -98,16 +128,24 @@ class RealRacingBot:
         now = datetime.datetime.now()
         return START_HOUR <= now.hour < END_HOUR
         
-    def device_tap(self, x, y, duration=None):
+    def device_tap(self, x, y, duration=None, action=None):
         """
         Realiza un click directo en las coordenadas del dispositivo usando ADB.
-        No requiere conversión ni calibración si las coordenadas vienen de la screenshot.
+        No requiere conversion ni calibracion si las coordenadas vienen de la screenshot.
+        Opcionalmente registra la accion ML.
         """
         self.log(f"ADB Tap en ({int(x)}, {int(y)})")
+        if action:
+            self.current_action = action
         if duration and duration > 0.1:
              self.adb.long_tap(x, y, int(duration * 1000))
         else:
              self.adb.tap(x, y)
+    
+    def set_action(self, action):
+        """Registra la accion actual para logging ML."""
+        self.current_action = action
+
 
     def _find_template_with_memory(self, screenshot, template_name, memory_key):
         """
@@ -408,14 +446,30 @@ class RealRacingBot:
         self.state = BotState.UNKNOWN
         self.last_state = None
         self.state_data = {}
+        
+        # Iniciar sesion ML si esta habilitado
+        if self.ml_enabled:
+            self.ml_logger.start_session(notes=f"Bot session started at {datetime.datetime.now()}")
 
         while not self.is_stopped():
             self.run_state_machine()
             time.sleep(0.1) # Pequeña pausa para no saturar CPU
 
+
     def run_state_machine(self):
-        """Dispatcher de la máquina de estados."""
-        # Log de transición
+        """Dispatcher de la maquina de estados con logging ML."""
+        # Capturar estado ANTES de la accion
+        state_before = self.state
+        self.current_action = Action.NONE
+        
+        # Tomar screenshot para ML (solo si ML habilitado)
+        if self.ml_enabled:
+            try:
+                self.last_screenshot = self.adb.take_screenshot()
+            except:
+                self.last_screenshot = None
+        
+        # Log de transicion visual
         if self.state != self.last_state:
             self.log(f"🔄 CAMBIO ESTADO: {self.last_state.name if self.last_state else 'None'} -> {self.state.name}")
             self.last_state = self.state
@@ -439,6 +493,20 @@ class RealRacingBot:
             self.handle_reward_screen_state()
         elif "TZ_" in self.state.name:
             self.handle_timezone_sequence()
+        
+        # 2. Log ML Transition (despues del dispatch)
+        if self.ml_enabled and state_before != self.state:
+            state_after = self.state
+            reward = calculate_reward(state_before, self.current_action, state_after)
+            self.ml_logger.log_transition(
+                screenshot=self.last_screenshot,
+                state_before=state_before,
+                action=self.current_action,
+                state_after=state_after,
+                reward=reward,
+                metadata={"timestamp": time.time()}
+            )
+
 
     def handle_unknown(self):
         """Estado inicial o de recuperación."""
@@ -578,8 +646,17 @@ class RealRacingBot:
         stall_counter = 0
         black_screen_counter = 0
         
-        while time.time() - start_wait < 70: # Timeout
+        while time.time() - start_wait < 91: # Timeout
             if self.is_stopped(): return "LOBBY"
+            
+            # 0. CHECK FOCUS FIRST (PRIORIDAD MAXIMA)
+            current_pkg = self.adb.get_current_package()
+            if current_pkg and current_pkg != PACKAGE_NAME and "settings" not in current_pkg.lower():
+                self.log(f"⚠ Perdida de foco durante anuncio: {current_pkg}")
+                # Intentar volver al juego
+                self.adb._run_command(["am", "start", "-n", f"{PACKAGE_NAME}/.MainActivity"])
+                time.sleep(2)
+                continue
             
             screenshot = self.adb.take_screenshot()
             self.update_live_view(screenshot)

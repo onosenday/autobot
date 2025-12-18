@@ -23,3 +23,8 @@ debug/
 !assets/*.png
 !assets/*.jpg
 manejar_git.md
+
+# ML Training Data (generated)
+training_data/
+ml_data.db
+ml/model_weights.pth
