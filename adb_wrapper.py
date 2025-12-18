@@ -78,6 +78,19 @@ class ADBWrapper:
             print(f"Excepción al conectar: {e}")
             return False
 
+    def is_connected(self):
+        """Devuelve True si el dispositivo está conectado y respondiendo."""
+        if not self.device:
+            return False
+        try:
+            # Comprobación ligera: obtener estado
+            state = self.device.get_state()
+            return state == "device"
+        except Exception:
+            # Si falla, intentar reconectar
+            self.device = None
+            return False
+
     def take_screenshot(self):
         """Toma una captura de pantalla usando adbutils (que usa screencap y socket)."""
         if not self._ensure_connection():

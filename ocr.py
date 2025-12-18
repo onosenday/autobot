@@ -295,7 +295,21 @@ class OCR:
                 data = pytesseract.image_to_data(img_rgb, output_type=pytesseract.Output.DICT)
                 for i in range(len(data['text'])):
                     raw_text = data['text'][i].strip().lower()
-                    if search_lower in raw_text or raw_text in search_lower:
+                    if not raw_text: continue
+                    
+                    # Match Logic:
+                    # 1. Exact match (insensitive)
+                    # 2. Search term inside detected text (e.g. "Madrid" in "Madrid (GMT+1)")
+                    # 3. Detected text inside Search term ONLY if detected is long enough (avoid "a" in "Madrid")
+                    match = False
+                    if search_lower == raw_text:
+                        match = True
+                    elif search_lower in raw_text:
+                        match = True
+                    elif len(raw_text) > 3 and raw_text in search_lower:
+                        match = True
+                        
+                    if match:
                         # Encontrado en ROI
                         lx, ly, lw, lh = data['left'][i], data['top'][i], data['width'][i], data['height'][i]
                         # Ajustar coordenadas al marco completo
@@ -313,10 +327,28 @@ class OCR:
             
             data = pytesseract.image_to_data(img_rgb, output_type=pytesseract.Output.DICT)
             for i in range(len(data['text'])):
+                # Filter bad confidence (blocks)
+                if 'conf' in data:
+                    try:
+                        conf = int(data['conf'][i])
+                        if conf == -1: continue
+                    except:
+                        pass
+
                 raw_text = data['text'][i].strip().lower()
-                if search_lower in raw_text or raw_text in search_lower:
+                if not raw_text: continue
+                
+                match = False
+                if search_lower == raw_text:
+                    match = True
+                elif search_lower in raw_text:
+                    match = True
+                elif len(raw_text) > 3 and raw_text in search_lower:
+                    match = True
+                    
+                if match:
                     lx, ly, lw, lh = data['left'][i], data['top'][i], data['width'][i], data['height'][i]
-                    print(f"OCR Adaptive: Encontrado '{search_text}' @ ({lx},{ly}) thresh={thresh_val}")
+                    print(f"OCR Adaptive: Encontrado '{search_text}' (Raw: '{raw_text}') @ ({lx},{ly}) thresh={thresh_val}")
                     return (lx, ly, lw, lh, thresh_val)
         
         # Paso 3: Probar también con OTSU y normal
@@ -329,10 +361,27 @@ class OCR:
             
             data = pytesseract.image_to_data(img_rgb, output_type=pytesseract.Output.DICT)
             for i in range(len(data['text'])):
+                if 'conf' in data:
+                    try:
+                        conf = int(data['conf'][i])
+                        if conf == -1: continue
+                    except:
+                        pass
+                
                 raw_text = data['text'][i].strip().lower()
-                if search_lower in raw_text or raw_text in search_lower:
+                if not raw_text: continue
+                
+                match = False
+                if search_lower == raw_text:
+                    match = True
+                elif search_lower in raw_text:
+                    match = True
+                elif len(raw_text) > 3 and raw_text in search_lower:
+                    match = True
+
+                if match:
                     lx, ly, lw, lh = data['left'][i], data['top'][i], data['width'][i], data['height'][i]
-                    print(f"OCR Adaptive: Encontrado '{search_text}' @ ({lx},{ly}) (OTSU/Gray pass)")
+                    print(f"OCR Adaptive: Encontrado '{search_text}' (Raw: '{raw_text}') @ ({lx},{ly}) (OTSU/Gray pass)")
                     return (lx, ly, lw, lh, -1)  # -1 indica pass especial
         
         print(f"OCR Adaptive: No encontrado '{search_text}' tras todos los intentos.")

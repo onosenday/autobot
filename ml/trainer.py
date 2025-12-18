@@ -13,7 +13,7 @@ from datetime import datetime
 import threading
 import queue
 
-from .model import ActionPredictor, preprocess_image
+from .model import ActionPredictor, preprocess_image, ENUM_TO_CLASS
 
 
 class TransitionDataset(Dataset):
@@ -24,13 +24,18 @@ class TransitionDataset(Dataset):
         self.screenshots_dir = screenshots_dir
         self.samples = []
         
-        # Mapeo action string -> index
-        self.action_to_idx = {
+        # Mapeo invertido: String -> Enum Int -> Class Int
+        # Necesitamos saber el Enum Int de cada String en BD.
+        # Asumiendo que el String en BD coincide con Key del Enum
+        # Mapa auxiliar String -> Enum Int
+        self.str_to_enum = {
             'WAIT': 0, 'CLICK_COIN': 1, 'CLICK_AD_CONFIRM': 2,
             'CLICK_CLOSE_X': 3, 'CLICK_FAST_FORWARD': 4, 'CLICK_REWARD_CLOSE': 5,
-            'PRESS_BACK': 6, 'CLICK_REGION': 10, 'CLICK_SELECCIONAR': 11,
-            'CLICK_SEARCH_FIELD': 12, 'CLICK_COUNTRY': 13, 'CLICK_CITY': 14,
-            'PRESS_HOME': 15, 'CLICK_WEB_CLOSE': 20, 'CLICK_SURVEY_SKIP': 21,
+            'PRESS_BACK': 6, 
+            'CLICK_REGION': 10, 'CLICK_SELECCIONAR': 11,
+            'CLICK_SEARCH_FIELD': 12, 'CLICK_COUNTRY': 13,
+            'CLICK_CITY': 14, 'PRESS_HOME': 15, 
+            'CLICK_WEB_CLOSE': 20, 'CLICK_SURVEY_SKIP': 21,
             'NONE': 99
         }
         
@@ -48,10 +53,16 @@ class TransitionDataset(Dataset):
                     
                 cursor = conn.execute(query, (min_id,))
                 for row in cursor.fetchall():
-                    tid, path, action = row
+                    tid, path, action_str = row
+                    
                     if path and os.path.exists(path):
-                        action_idx = self.action_to_idx.get(action, 0)
-                        self.samples.append((path, action_idx, tid))
+                        # 1. String -> Enum Int
+                        enum_val = self.str_to_enum.get(action_str)
+                        if enum_val is not None:
+                            # 2. Enum Int -> Class Int (via model mapping)
+                            class_idx = ENUM_TO_CLASS.get(enum_val)
+                            if class_idx is not None:
+                                self.samples.append((path, class_idx, tid))
         except Exception as e:
             print(f"[Dataset] Error loading: {e}")
     

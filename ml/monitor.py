@@ -8,7 +8,7 @@ from collections import deque
 import cv2
 import numpy as np
 
-from .model import ActionPredictor, preprocess_image
+from .model import ActionPredictor, preprocess_image, ENUM_TO_CLASS
 
 
 class LiveMonitor:
@@ -86,11 +86,18 @@ class LiveMonitor:
                 tensor = preprocess_image(screenshot)
                 
                 # Predecir
-                predicted_idx, confidence = self.model.predict(tensor)
+                predicted_class_idx, confidence = self.model.predict(tensor)
                 
                 # Comparar
-                actual_idx = actual_action.value if hasattr(actual_action, 'value') else int(actual_action)
-                is_correct = (predicted_idx == actual_idx)
+                # 1. Obtener Enum Int -> Class Int
+                actual_enum_val = actual_action.value if hasattr(actual_action, 'value') else int(actual_action)
+                actual_class_idx = ENUM_TO_CLASS.get(actual_enum_val)
+                
+                if actual_class_idx is None:
+                    # Accion ignorada (ej. NONE=99), no comparamos
+                    continue
+                
+                is_correct = (predicted_class_idx == actual_class_idx)
                 
                 # Actualizar estadisticas
                 self.total_comparisons += 1

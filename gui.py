@@ -60,7 +60,7 @@ class BotGUI:
         
         # Paleta "Night Blue"
         BG_MAIN = "#102A43"   # Deep Navy
-        BG_PANEL = "#1E3246"  # Sidebar
+        BG_PANEL = "#1E3246"  # Sidebar / Panel
         BG_CARD = "#243B53"   # Cards
         FG_TEXT = "#D9E2EC"   # Text
         ACCENT = "#334E68"
@@ -68,188 +68,178 @@ class BotGUI:
         BTN_FG = "#FFFFFF"
         BTN_ACTIVE = "#3182CE"
 
-        style.configure(".", background=BG_MAIN, foreground=FG_TEXT, font=("Segoe UI", 11))
+        style.configure(".", background=BG_MAIN, foreground=FG_TEXT, font=("Segoe UI", 10))
         
         # Custom Frames
         style.configure("Main.TFrame", background=BG_MAIN)
         style.configure("Panel.TFrame", background=BG_PANEL)
         
-        # Cards (Labelframes)
+        # Cards
         style.configure("Card.TLabelframe", background=BG_CARD, bordercolor=BG_MAIN, relief="flat")
-        style.configure("Card.TLabelframe.Label", background=BG_CARD, foreground="#829AB1", font=("Segoe UI", 10, "bold"))
+        style.configure("Card.TLabelframe.Label", background=BG_CARD, foreground="#829AB1", font=("Segoe UI", 9, "bold"))
         
         # Labels
         style.configure("TLabel", background=BG_MAIN, foreground=FG_TEXT)
-        style.configure("Header.TLabel", font=("Segoe UI", 22, "bold"), foreground="#627D98", background=BG_PANEL)
-        style.configure("Stat.TLabel", background=BG_CARD, foreground="#829AB1", font=("Segoe UI", 9)) # Reduced font
-        style.configure("StatValue.TLabel", background=BG_CARD, font=("Segoe UI", 16, "bold")) # Reduced font
-        style.configure("Status.TLabel", background=BG_CARD, foreground="#48BB78", font=("Segoe UI", 12))
+        style.configure("Panel.TLabel", background=BG_PANEL, foreground=FG_TEXT)
+        style.configure("Header.TLabel", font=("Segoe UI", 20, "bold"), foreground="#627D98", background=BG_PANEL)
+        
+        style.configure("Stat.TLabel", background=BG_PANEL, foreground="#829AB1", font=("Segoe UI", 8)) 
+        style.configure("StatValue.TLabel", background=BG_PANEL, font=("Segoe UI", 14, "bold")) 
+        style.configure("Status.TLabel", background=BG_PANEL, foreground="#48BB78", font=("Segoe UI", 11, "bold"))
 
         # Buttons
-        style.configure("Action.TButton", padding=12, relief="flat", background=BTN_BG, foreground=BTN_FG, borderwidth=0, font=("Segoe UI", 11, "bold"))
+        style.configure("Action.TButton", padding=10, relief="flat", background=BTN_BG, foreground=BTN_FG, borderwidth=0, font=("Segoe UI", 10, "bold"))
         style.map("Action.TButton", background=[('active', BTN_ACTIVE)])
+        
+        style.configure("Small.TButton", padding=5, relief="flat", background=ACCENT, foreground=FG_TEXT, borderwidth=0, font=("Segoe UI", 8))
 
     def _setup_ui(self):
-        main_frame = ttk.Frame(self.root, style="Main.TFrame")
-        main_frame.pack(fill=tk.BOTH, expand=True)
+        # Master Container 3 Columnas
+        main_container = ttk.Frame(self.root, style="Main.TFrame")
+        main_container.pack(fill=tk.BOTH, expand=True)
         
-        # --- Sidebar (Panel Izquierdo) ---
-        left_panel = ttk.Frame(main_frame, style="Panel.TFrame", padding=20)
-        left_panel.pack(side=tk.LEFT, fill=tk.Y)
+        # =========================================================================
+        # COLUMNA 1: IZQUIERDA (CONTROL) (20%)
+        # =========================================================================
+        left_panel = ttk.Frame(main_container, style="Panel.TFrame", padding=15)
+        left_panel.pack(side=tk.LEFT, fill=tk.Y, padx=(0,1))
         
-        # Título
-        ttk.Label(left_panel, text="RR3 AUTOBOT", style="Header.TLabel").pack(pady=(0, 20), anchor=tk.W) # Reduced pady
+        # LOGO / HEADER
+        ttk.Label(left_panel, text="RR3\nCOMMAND\nCENTER", style="Header.TLabel", justify=tk.LEFT).pack(anchor=tk.W, pady=(0, 25))
 
-        # Control Card
-        control_frame = ttk.LabelFrame(left_panel, text="CONTROL", style="Card.TLabelframe", padding=15)
-        control_frame.pack(fill=tk.X, pady=(0, 15)) # Reduced pady
+        # CONTROL PRINCIPAL
+        ttk.Label(left_panel, text="CONTROL DE MISIÓN", style="Stat.TLabel").pack(anchor=tk.W, pady=(0,5))
         
-        self.btn_start = ttk.Button(control_frame, text="▶ INICIAR", command=self.start_bot, style="Action.TButton")
-        self.btn_start.pack(fill=tk.X, pady=(0, 10))
+        self.btn_start = ttk.Button(left_panel, text="▶ INICIAR OPERACIÓN", command=self.start_bot, style="Action.TButton")
+        self.btn_start.pack(fill=tk.X, pady=(0, 8))
         
-        self.btn_stop = ttk.Button(control_frame, text="⏹ DETENER", command=self.stop_bot, state=tk.DISABLED, style="Action.TButton")
-        self.btn_stop.pack(fill=tk.X)
+        self.btn_stop = ttk.Button(left_panel, text="⏹ DETENER", command=self.stop_bot, state=tk.DISABLED, style="Action.TButton")
+        self.btn_stop.pack(fill=tk.X, pady=(0, 20))
         
-        self.lbl_status = ttk.Label(control_frame, text="• Listo", style="Status.TLabel", wraplength=180)
-        self.lbl_status.pack(pady=(10, 0), anchor=tk.W)
+        # STATUS INDICATOR
+        self.status_frame = tk.Frame(left_panel, bg="#1E3246")
+        self.status_frame.pack(fill=tk.X, pady=(0, 20))
+        tk.Label(self.status_frame, text="ESTADO ACTUAL", fg="#829AB1", bg="#1E3246", font=("Segoe UI", 8)).pack(anchor=tk.W)
+        
+        self.lbl_status = tk.Label(self.status_frame, text="INACTIVO", fg="#A0AEC0", bg="#1E3246", font=("Segoe UI", 12, "bold"))
+        self.lbl_status.pack(anchor=tk.W)
+        
+        # ML NEURAL NET SECTION
+        ttk.Label(left_panel, text="RED NEURONAL (BRAIN)", style="Stat.TLabel").pack(anchor=tk.W, pady=(10,5))
+        
+        ml_frame = tk.Frame(left_panel, bg="#1E3246")
+        ml_frame.pack(fill=tk.X)
+        
+        # Buttons ML Grid
+        self.btn_ml_train = tk.Button(ml_frame, text="🧠 Entrenar", bg="#4A5568", fg="white", bd=0, command=self._ml_train, cursor="hand2")
+        self.btn_ml_train.pack(fill=tk.X, pady=2)
+        
+        self.btn_ml_test = tk.Button(ml_frame, text="🧪 Testear", bg="#38A169", fg="white", bd=0, command=self._ml_test, cursor="hand2")
+        self.btn_ml_test.pack(fill=tk.X, pady=2)
+        
+        self.btn_ml_activate = tk.Button(ml_frame, text="⚡ Activar Monitor", bg="#805AD5", fg="white", bd=0, command=self._ml_toggle_monitor, cursor="hand2")
+        self.btn_ml_activate.pack(fill=tk.X, pady=2)
+        
+        self.lbl_ml_status = tk.Label(ml_frame, text="Ready", bg="#1E3246", fg="#718096", font=("Segoe UI", 8))
+        self.lbl_ml_status.pack(anchor=tk.W, pady=(5,0))
 
-        # Stats Card
-        # Usamos Frame normal en lugar de LabelFrame para personalizar el header
-        stats_card = ttk.Frame(left_panel, style="Card.TLabelframe", padding=2) # Simulate border/bg
-        stats_card.pack(fill=tk.X)
+        # =========================================================================
+        # COLUMNA 2: CENTRO (VISION + LOGS) (55%)
+        # =========================================================================
+        center_panel = ttk.Frame(main_container, style="Main.TFrame", padding=15)
+        center_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         
-        # Inner Frame for content
-        stats_inner = tk.Frame(stats_card, bg="#243B53", padx=10, pady=10) # Reduced padding
-        stats_inner.pack(fill=tk.BOTH, expand=True)
-
-        # Custom Header inside Card
-        header_frame = tk.Frame(stats_inner, bg="#243B53")
-        header_frame.pack(fill=tk.X, pady=(0, 10)) # Reduced pady
+        # LOGS HEADER
+        log_header = tk.Frame(center_panel, bg="#102A43")
+        log_header.pack(fill=tk.X, pady=(0, 5))
+        tk.Label(log_header, text="TERMINAL DE REGISTRO", fg="#627D98", bg="#102A43", font=("Consolas", 10, "bold")).pack(side=tk.LEFT)
         
-        ttk.Label(header_frame, text="MÉTRICAS", style="Card.TLabelframe.Label", background="#243B53").pack(side=tk.LEFT)
-        
-        # Graph Button (Small, Icon only)
-        btn_graph = tk.Button(header_frame, text="📊", font=("Segoe UI Emoji", 12), 
-                            bg="#243B53", fg="#4FD1C5", bd=0, relief="flat", highlightthickness=0,
-                            activebackground="#243B53", activeforeground="#4FD1C5",
-                            cursor="hand2", command=self._show_history_chart)
-        btn_graph.pack(side=tk.RIGHT)
-        
-        # Calendar Button
-        btn_calendar = tk.Button(header_frame, text="📅", font=("Segoe UI Emoji", 12), 
-                            bg="#243B53", fg="#F6E05E", bd=0, relief="flat", highlightthickness=0,
-                            activebackground="#243B53", activeforeground="#F6E05E",
-                            cursor="hand2", command=self._show_calendar_view)
-        btn_calendar.pack(side=tk.RIGHT, padx=(0, 5))
-        
-        # Stats Content
-        def add_stat(label, color="#F0F4F8"):
-            ttk.Label(stats_inner, text=label, style="Stat.TLabel", background="#243B53").pack(anchor=tk.W)
-            lbl = ttk.Label(stats_inner, text="--", style="StatValue.TLabel", background="#243B53", foreground=color)
-            lbl.pack(anchor=tk.W, pady=(0, 5)) # Reduced pady significantly
-            return lbl
-
-        self.lbl_gold = add_stat("ORO GANADO (SESIÓN)", "#F6E05E")
-        self.lbl_runtime = add_stat("TIEMPO EJECUCIÓN", "#4FD1C5")
-        self.lbl_gold_speed = add_stat("RITMO (ORO/HORA)", "#F6E05E")
-        self.lbl_speed = add_stat("VELOCIDAD (ADs/H)", "#63B3ED")
-        self.lbl_gold_history = add_stat("TOTAL HISTÓRICO", "#CBD5E0")
-        
-        # Set initial values
-        self.lbl_runtime.config(text="00:00:00")
-        
-        # --- ML Model Card ---
-        ml_card = ttk.Frame(left_panel, style="Card.TLabelframe", padding=2)
-        ml_card.pack(fill=tk.X, pady=(15, 0))
-        
-        ml_inner = tk.Frame(ml_card, bg="#243B53", padx=10, pady=10)
-        ml_inner.pack(fill=tk.BOTH, expand=True)
-        
-        # ML Header
-        ml_header = tk.Frame(ml_inner, bg="#243B53")
-        ml_header.pack(fill=tk.X, pady=(0, 8))
-        ttk.Label(ml_header, text="ML MODEL", style="Card.TLabelframe.Label", background="#243B53").pack(side=tk.LEFT)
-        ttk.Label(ml_header, text="(experimental)", style="Stat.TLabel", background="#243B53", foreground="#FC8181", font=("Segoe UI", 8)).pack(side=tk.LEFT, padx=(5,0))
-        
-        # ML Buttons Row
-        ml_btn_frame = tk.Frame(ml_inner, bg="#243B53")
-        ml_btn_frame.pack(fill=tk.X, pady=(0, 8))
-        
-        self.btn_ml_train = tk.Button(ml_btn_frame, text="Entrenar", font=("Segoe UI", 9),
-                                     bg="#2B6CB0", fg="white", bd=0, padx=8, pady=4,
-                                     cursor="hand2", command=self._ml_train)
-        self.btn_ml_train.pack(side=tk.LEFT, padx=(0, 5))
-        
-        self.btn_ml_test = tk.Button(ml_btn_frame, text="Test", font=("Segoe UI", 9),
-                                    bg="#38A169", fg="white", bd=0, padx=8, pady=4,
-                                    cursor="hand2", command=self._ml_test)
-        self.btn_ml_test.pack(side=tk.LEFT, padx=(0, 5))
-        
-        self.btn_ml_activate = tk.Button(ml_btn_frame, text="Activar", font=("Segoe UI", 9),
-                                        bg="#805AD5", fg="white", bd=0, padx=8, pady=4,
-                                        cursor="hand2", command=self._ml_toggle_monitor)
-        self.btn_ml_activate.pack(side=tk.LEFT)
-        
-        # ML Stats
-        def add_ml_stat(parent, label, initial="--", color="#D9E2EC"):
-            frame = tk.Frame(parent, bg="#243B53")
-            frame.pack(fill=tk.X, pady=1)
-            ttk.Label(frame, text=label, style="Stat.TLabel", background="#243B53", font=("Segoe UI", 8)).pack(side=tk.LEFT)
-            lbl = tk.Label(frame, text=initial, bg="#243B53", fg=color, font=("Segoe UI", 9, "bold"))
-            lbl.pack(side=tk.RIGHT)
-            return lbl
-        
-        self.lbl_ml_accuracy = add_ml_stat(ml_inner, "Accuracy:", "N/A", "#63B3ED")
-        self.lbl_ml_samples = add_ml_stat(ml_inner, "Capturas nuevas:", "0", "#A0AEC0")
-        self.lbl_ml_concordance = add_ml_stat(ml_inner, "Concordancia:", "--", "#A0AEC0")
-        
-        # ML Status/Progress
-        self.lbl_ml_status = tk.Label(ml_inner, text="", bg="#243B53", fg="#829AB1", 
-                                      font=("Segoe UI", 8), wraplength=180, justify=tk.LEFT)
-        self.lbl_ml_status.pack(fill=tk.X, pady=(5, 0))
-        
-        # Initialize ML components
-        self._init_ml_components()
-
-        # Font override removed to use style defaults
-
-        # --- Main Area (Panel Derecho) ---
-        right_panel = ttk.Frame(main_frame, style="Main.TFrame", padding=20)
-        right_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        
-        # Live View
-        ttk.Label(right_panel, text="VISTA EN VIVO", background="#102A43", foreground="#829AB1", font=("Segoe UI", 10, "bold")).pack(anchor=tk.W, pady=(0,5))
-        
-        preview_container = tk.Frame(right_panel, bg="#102A43", bd=0, highlightthickness=2, highlightbackground="#243B53")
-        preview_container.pack(anchor=tk.W, pady=(0, 20))
-        
-        self.canvas = tk.Canvas(preview_container, width=640, height=360, bg="#102A43", highlightthickness=0)
-        self.canvas.pack()
-        
-        # Logs
-        ttk.Label(right_panel, text="REGISTRO DE ACTIVIDAD", background="#102A43", foreground="#829AB1", font=("Segoe UI", 10, "bold")).pack(anchor=tk.W, pady=(0,5))
-        
-        self.log_area = scrolledtext.ScrolledText(right_panel, height=8, state=tk.DISABLED, 
+        # LOG AREA (Arriba)
+        self.log_area = scrolledtext.ScrolledText(center_panel, height=12, state=tk.DISABLED, 
                                                   font=("Consolas", 10), 
                                                   bg="#0F2439", fg="#D9E2EC", 
                                                   relief="flat", padx=10, pady=10,
-                                                  insertbackground="white") # Cursor white
-        self.log_area.pack(fill=tk.BOTH, expand=True)
+                                                  insertbackground="white")
+        self.log_area.pack(fill=tk.BOTH, expand=True, pady=(0, 15))
+        self._configure_log_tags()
+
+        # LIVE VIEW HEADER
+        view_header = tk.Frame(center_panel, bg="#102A43")
+        view_header.pack(fill=tk.X, pady=(0, 5))
+        tk.Label(view_header, text="VISIÓN EN TIEMPO REAL (ADB LIVE)", fg="#627D98", bg="#102A43", font=("Consolas", 10, "bold")).pack(side=tk.LEFT)
         
-        # Log Tags Configuration
+        # PREVIEW CONTAINER (Abajo)
+        # Ratio 16:9 for 640px width -> 360px height
+        self.preview_frame = tk.Frame(center_panel, bg="#000000", width=640, height=360)
+        self.preview_frame.pack(anchor=tk.CENTER)
+        self.preview_frame.pack_propagate(False) # Force size
+        
+        self.canvas = tk.Canvas(self.preview_frame, width=640, height=360, bg="#000000", highlightthickness=0)
+        self.canvas.pack(fill=tk.BOTH, expand=True)
+
+        # =========================================================================
+        # COLUMNA 3: DERECHA (METRICAS) (25%)
+        # =========================================================================
+        right_panel = ttk.Frame(main_container, style="Panel.TFrame", padding=15)
+        right_panel.pack(side=tk.RIGHT, fill=tk.Y, padx=(1,0))
+        
+        ttk.Label(right_panel, text="RENDIMIENTO", style="Stat.TLabel").pack(anchor=tk.W, pady=(0,15))
+        
+        # SESSION TIMER
+        self.lbl_runtime = self._create_stat_block(right_panel, "TIEMPO SESIÓN", "00:00:00", "#63B3ED")
+        
+        # GOLD SESSION
+        self.lbl_gold = self._create_stat_block(right_panel, "ORO (SESIÓN)", "0", "#F6E05E")
+        
+        # GOLD RATE
+        self.lbl_gold_speed = self._create_stat_block(right_panel, "RITMO (GC/H)", "0", "#F6E05E")
+        
+        # ADS RATE
+        self.lbl_speed = self._create_stat_block(right_panel, "VELOCIDAD (ADS/H)", "0.0", "#63B3ED")
+        
+        # TOTAL HISTORY
+        self.lbl_gold_history = self._create_stat_block(right_panel, "TOTAL HISTÓRICO", "--", "#CBD5E0")
+        
+        # GRAPHS & CALENDAR
+        btn_frame = tk.Frame(right_panel, bg="#1E3246")
+        btn_frame.pack(fill=tk.X, pady=20)
+        
+        tk.Button(btn_frame, text="📊 Ver Gráfica", bg="#2D3748", fg="white", bd=0, pady=5, command=self._show_history_chart).pack(fill=tk.X, pady=2)
+        tk.Button(btn_frame, text="📅 Calendario", bg="#2D3748", fg="white", bd=0, pady=5, command=self._show_calendar_view).pack(fill=tk.X, pady=2)
+        
+        # ML METRICS MINI-DASH
+        ttk.Label(right_panel, text="MÉTRICAS ML", style="Stat.TLabel").pack(anchor=tk.W, pady=(20,10))
+        
+        self.lbl_ml_accuracy = self._create_metric_row(right_panel, "Precisión", "N/A", "#9F7AEA")
+        self.lbl_ml_samples = self._create_metric_row(right_panel, "Capturas", "0", "#A0AEC0")
+        self.lbl_ml_concordance = self._create_metric_row(right_panel, "Concordancia", "--", "#A0AEC0")
+
+        # Initialize ML components
+        self._init_ml_components()
+
+    def _create_stat_block(self, parent, label, initial, color):
+        frame = tk.Frame(parent, bg="#1E3246")
+        frame.pack(fill=tk.X, pady=(0, 15))
+        tk.Label(frame, text=label, fg="#829AB1", bg="#1E3246", font=("Segoe UI", 9)).pack(anchor=tk.W)
+        lbl = tk.Label(frame, text=initial, fg=color, bg="#1E3246", font=("Segoe UI", 20, "bold"))
+        lbl.pack(anchor=tk.W)
+        return lbl
+
+    def _create_metric_row(self, parent, label, initial, color):
+        frame = tk.Frame(parent, bg="#1E3246")
+        frame.pack(fill=tk.X, pady=2)
+        tk.Label(frame, text=label, fg="#829AB1", bg="#1E3246", font=("Segoe UI", 9)).pack(side=tk.LEFT)
+        lbl = tk.Label(frame, text=initial, fg=color, bg="#1E3246", font=("Segoe UI", 9, "bold"))
+        lbl.pack(side=tk.RIGHT)
+        return lbl
+
+    def _configure_log_tags(self):
         self.log_area.tag_config("gold", foreground="#F6E05E")     # Yellow
         self.log_area.tag_config("error", foreground="#FC8181")    # Red
         self.log_area.tag_config("state", foreground="#63B3ED")    # Blue
         self.log_area.tag_config("success", foreground="#68D391")  # Green
-        self.log_area.tag_config("highlight", foreground="#D9E2EC", font=("Consolas", 10, "bold")) # Bright White
+        self.log_area.tag_config("highlight", foreground="#D9E2EC", font=("Consolas", 10, "bold"))
 
-    # Métodos de calibración eliminados (save_calibration, load_calibration, _update_calib_label, start_calibration, _calibration_thread)
-
-
-
-    # test_click removed
-             
-    # start_calibration y _calibration_thread eliminados
 
     def log_message(self, msg):
         self.log_queue.put(msg)
@@ -316,17 +306,27 @@ class BotGUI:
             self.log_area.config(state=tk.DISABLED)
             
             # Actualizar status label si el mensaje parece un estado
+            # Actualizar status label si el mensaje parece un estado
             if "Estado:" in msg or "CAMBIO ESTADO:" in msg:
-                clean_msg = msg.split("]")[-1].strip() # Limpiar timestamp si se desea
-                # Opcional: Filtrar solo el nuevo estado
+                clean_msg = ""
+                # Caso 1: Cambio de estado explícito
                 if "CAMBIO ESTADO" in msg:
-                     # Parsear "CAMBIO ESTADO: X -> Y" => Mostrar "Estado: Y"
+                     # Parsear "CAMBIO ESTADO: X -> Y" => Mostrar "Y"
                      parts = msg.split("->")
                      if len(parts) > 1:
                          new_state = parts[-1].strip()
-                         clean_msg = f"• Estado: {new_state}"
+                         clean_msg = new_state
+                # Caso 2: Mensaje de "Estado:" (log directo)
+                elif "Estado:" in msg:
+                    # Limpiar timestamp y prefijo
+                    clean_msg = msg.split("]")[-1].strip()
+                    if "Estado:" in clean_msg:
+                        clean_msg = clean_msg.split("Estado:")[-1].strip()
+                    # Quitar el bullet si lo hubiera
+                    clean_msg = clean_msg.replace("•", "").strip()
                 
-                self.lbl_status.config(text=clean_msg)
+                if clean_msg:
+                    self.lbl_status.config(text=clean_msg)
                 
         self.root.after(100, self._process_logs)
 
@@ -389,7 +389,7 @@ class BotGUI:
         self.stop_event.clear()
         self.btn_start.config(state=tk.DISABLED)
         self.btn_stop.config(state=tk.NORMAL)
-        self.lbl_status.config(text="• Iniciando...", foreground="#63B3ED")
+        self.lbl_status.config(text="Iniciando...", foreground="#63B3ED")
         
         self.bot_thread = threading.Thread(target=self._run_bot_thread, daemon=True)
         self.bot_thread.start()
@@ -418,7 +418,7 @@ class BotGUI:
         if self.bot_thread and self.bot_thread.is_alive():
             self.log_message("Deteniendo bot... espere a que termine la acción actual.")
             self.stop_event.set()
-            self.lbl_status.config(text="• Deteniendo...", foreground="#FC8181")
+            self.lbl_status.config(text="Deteniendo...", foreground="#FC8181")
             self.btn_stop.config(state=tk.DISABLED)
             # El botón de iniciar se reactivará cuando muera el hilo
 
@@ -822,7 +822,7 @@ class BotGUI:
         self.is_bot_running = False
         self.btn_start.config(state=tk.NORMAL)
         self.btn_stop.config(state=tk.DISABLED)
-        self.lbl_status.config(text="• Detenido", foreground="#A0AEC0")
+        self.lbl_status.config(text="Detenido", foreground="#A0AEC0")
 
     # open_scrcpy removed
 

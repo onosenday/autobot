@@ -10,9 +10,32 @@ class ActionPredictor(nn.Module):
     """
     CNN simple para clasificacion de acciones.
     Input: Imagen grayscale 640x360 -> resize a 160x90
-    Output: 15 clases (Action enum values)
+    Output: 15 clases (Action enum values mapped to 0-14)
     """
-    
+
+# Mapping explicit from Bot Action Enum Int -> Model Class Int (0-N)
+# 0-6 are 1:1. 10-15 mapped to 7-12. 20-21 mapped to 13-14.
+ENUM_TO_CLASS = {
+    0: 0,   # WAIT
+    1: 1,   # CLICK_COIN
+    2: 2,   # CLICK_AD_CONFIRM
+    3: 3,   # CLICK_CLOSE_X
+    4: 4,   # CLICK_FAST_FORWARD
+    5: 5,   # CLICK_REWARD_CLOSE
+    6: 6,   # PRESS_BACK
+    10: 7,  # CLICK_REGION
+    11: 8,  # CLICK_SELECCIONAR
+    12: 9,  # CLICK_SEARCH_FIELD
+    13: 10, # CLICK_COUNTRY
+    14: 11, # CLICK_CITY
+    15: 12, # PRESS_HOME
+    20: 13, # CLICK_WEB_CLOSE
+    21: 14, # CLICK_SURVEY_SKIP
+    99: 0   # NONE -> WAIT (Map unlabelled actions to WAIT)
+}
+# 99 (NONE) is excluded.
+
+class ActionPredictor(nn.Module):
     def __init__(self, num_classes=15):
         super(ActionPredictor, self).__init__()
         
