@@ -22,6 +22,24 @@ class ADBWrapper:
             print(f"Error conectando con adbutils: {e}")
             self.device = None
 
+    def get_screen_dimensions(self):
+        """Devuelve (width, height) del dispositivo."""
+        if not self._ensure_connection():
+            return (0, 0)
+        
+        try:
+             # Usar dumpsys window para obtener tamaño real (PhysicalDisplayInfo)
+             # O simplemente wm size
+             out = self._run_command(["wm", "size"])
+             # Output: "Physical size: 1080x2340"
+             if out:
+                 match = re.search(r"Physical size: (\d+)x(\d+)", out)
+                 if match:
+                     return int(match.group(1)), int(match.group(2))
+        except:
+             pass
+        return (0, 0)
+
     def _ensure_connection(self):
         if self.device is None:
             self._connect_client()

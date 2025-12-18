@@ -5,10 +5,11 @@ class Vision:
     def __init__(self):
         pass
 
-    def find_template(self, screen_image, template_path, threshold=0.8):
+    def find_template(self, screen_image, template_path, threshold=0.8, check_negative=False):
         """
         Busca una imagen plantilla dentro de la captura de pantalla.
-        Devuelve (x, y) del centro si se encuentra, o None si no.
+        Devuelve (x, y, w, h) si se encuentra, o None si no.
+        check_negative: Si True, busca también con la plantilla invertida (blanco<->negro).
         """
         if screen_image is None:
             return None
@@ -23,21 +24,91 @@ class Vision:
         s_h, s_w = screen_image.shape[:2]
         
         if s_h < t_h or s_w < t_w:
-            print(f"⚠ Warning: Imagen de pantalla ({s_w}x{s_h}) más pequeña que template ({t_w}x{t_h}). Saltando.")
+            # print(f"⚠ Warning: Imagen de pantalla ({s_w}x{s_h}) más pequeña que template ({t_w}x{t_h}). Saltando.")
             return None
 
-        # Template Matching
+        # 1. Match Normal
         result = cv2.matchTemplate(screen_image, template, cv2.TM_CCOEFF_NORMED)
         min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
 
-        if max_val >= threshold:
-            # Calcular el centro
-            h, w = template.shape[:2]
-            center_x = max_loc[0] + w // 2
-            center_y = max_loc[1] + h // 2
-            return (center_x, center_y, w, h)
+        best_val = max_val
+        best_loc = max_loc
+        best_w, best_h = t_w, t_h
+
+        # 2. Match Negativo (si solicitado)
+        if check_negative:
+             template_inv = cv2.bitwise_not(template)
+             result_inv = cv2.matchTemplate(screen_image, template_inv, cv2.TM_CCOEFF_NORMED)
+             min_val_i, max_val_i, min_loc_i, max_loc_i = cv2.minMaxLoc(result_inv)
+             
+             if max_val_i > best_val:
+                 # print(f"Found better match with NEGATIVE template: {max_val_i}")
+                 best_val = max_val_i
+                 best_loc = max_loc_i
+
+        if best_val >= threshold:
+            center_x = best_loc[0] + best_w // 2
+            center_y = best_loc[1] + best_h // 2
+            return (center_x, center_y, best_w, best_h)
         
         return None
+
+    def find_template_adaptive(self, screen_image, template_path, hint_coords=None, threshold=0.8, thresholds=None):
+        """
+        Busca una imagen plantilla con memoria adaptativa.
+        1. Si hint_coords (x, y, w, h) existe, primero busca en esa región.
+        2. Si no encuentra, busca en toda la imagen.
+        
+        Retorna: (center_x, center_y, w, h) o None.
+        """
+        if screen_image is None:
+            return None
+        
+        template = cv2.imread(template_path, cv2.IMREAD_COLOR)
+        if template is None:
+            print(f"Error: No se pudo cargar la imagen plantilla: {template_path}")
+            return None
+        
+        t_h, t_w = template.shape[:2]
+        s_h, s_w = screen_image.shape[:2]
+        
+        if s_h < t_h or s_w < t_w:
+            return None
+        
+        # --- Paso 1: Buscar en hint_coords si existen ---
+        if hint_coords:
+            hx, hy, hw, hh = hint_coords
+            # Expandir el ROI para tolerancia
+            margin = max(50, t_w, t_h)
+            x1 = max(0, hx - margin)
+            y1 = max(0, hy - margin)
+            x2 = min(s_w, hx + hw + margin)
+            y2 = min(s_h, hy + hh + margin)
+            
+            roi = screen_image[y1:y2, x1:x2]
+            
+            if roi.shape[0] >= t_h and roi.shape[1] >= t_w:
+                result = cv2.matchTemplate(roi, template, cv2.TM_CCOEFF_NORMED)
+                min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+                
+                if max_val >= threshold:
+                    abs_x = x1 + max_loc[0] + t_w // 2
+                    abs_y = y1 + max_loc[1] + t_h // 2
+                    print(f"Template Adaptive: Encontrado en hint ROI @ ({abs_x},{abs_y}) conf={max_val:.2f}")
+                    return (abs_x, abs_y, t_w, t_h)
+        
+        # --- Paso 2: Búsqueda completa ---
+        result = cv2.matchTemplate(screen_image, template, cv2.TM_CCOEFF_NORMED)
+        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+        
+        if max_val >= threshold:
+            center_x = max_loc[0] + t_w // 2
+            center_y = max_loc[1] + t_h // 2
+            print(f"Template Adaptive: Encontrado en full scan @ ({center_x},{center_y}) conf={max_val:.2f}")
+            return (center_x, center_y, t_w, t_h)
+        
+        return None
+
 
     def generate_x_templates(self):
         """Genera plantillas de 'X' en memoria para no depender de archivos."""

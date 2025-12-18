@@ -19,6 +19,57 @@ class GoldLogger:
                     amount INTEGER
                 )
             """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS session_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    date TEXT,
+                    start_time TEXT,
+                    end_time TEXT,
+                    duration TEXT,
+                    gold_earned INTEGER
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS ocr_memory (
+                    key TEXT PRIMARY KEY,
+                    text TEXT,
+                    x INTEGER,
+                    y INTEGER,
+                    w INTEGER,
+                    h INTEGER,
+                    threshold INTEGER,
+                    updated_at TEXT
+                )
+            """)
+
+    def save_ocr_memory(self, key, text, x, y, w, h, threshold):
+        """Guarda o actualiza una detección OCR exitosa en memoria."""
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute("""
+                    INSERT OR REPLACE INTO ocr_memory (key, text, x, y, w, h, threshold, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (key, text, x, y, w, h, threshold, now_str))
+            print(f"OCR Memory saved: {key} -> ({x},{y}) @ threshold {threshold}")
+        except Exception as e:
+            print(f"Error saving OCR memory: {e}")
+
+    def get_ocr_memory(self, key):
+        """Recupera la última detección OCR exitosa para una clave dada.
+        Retorna dict {text, x, y, w, h, threshold} o None."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.execute(
+                    "SELECT text, x, y, w, h, threshold FROM ocr_memory WHERE key = ?", (key,)
+                )
+                row = cursor.fetchone()
+                if row:
+                    return {"text": row[0], "x": row[1], "y": row[2], "w": row[3], "h": row[4], "threshold": row[5]}
+        except Exception as e:
+            print(f"Error fetching OCR memory: {e}")
+        return None
+
 
     def _migrate_legacy_txt(self, txt_path):
         """Migra datos del fichero de texto antiguo si existe y lo mueve a zz."""
@@ -68,6 +119,25 @@ class GoldLogger:
         except Exception as e:
             print(f"Error escribiendo en DB: {e}")
 
+    def log_session(self, start_dt, end_dt, gold_earned):
+        """Registra una sesión de ejecución completa."""
+        try:
+            date_str = start_dt.strftime("%Y-%m-%d")
+            start_str = start_dt.strftime("%H:%M:%S")
+            end_str = end_dt.strftime("%H:%M:%S")
+            duration_delta = end_dt - start_dt
+            # Formato duración H:M:S sin microsegundos
+            duration_str = str(duration_delta).split('.')[0] 
+            
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute("""
+                    INSERT INTO session_history (date, start_time, end_time, duration, gold_earned)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (date_str, start_str, end_str, duration_str, gold_earned))
+            print(f"Session Logged: {duration_str} - Gold: {gold_earned}")
+        except Exception as e:
+            print(f"Error logueando sesion: {e}")
+
     def get_todays_gold(self):
         """Suma el oro ganado hoy (YYYY-MM-DD)."""
         today_str = datetime.datetime.now().strftime("%Y-%m-%d")
@@ -88,3 +158,37 @@ class GoldLogger:
             return result if result else 0
         except Exception:
             return 0
+
+    def get_daily_history(self, limit=7):
+        """
+        Retorna lista de tuplas (fecha, total_oro) de los ultimos 'limit' dias.
+        INCLUYE dias vacios (sin actividad) con valor 0.
+        Formato fecha: YYYY-MM-DD
+        Orden: Ascendente por fecha.
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                # Obtener datos existentes
+                query = """
+                    SELECT substr(timestamp, 1, 10) as day, SUM(amount)
+                    FROM gold_history
+                    GROUP BY day
+                    ORDER BY day DESC
+                    LIMIT ?
+                """
+                cursor = conn.execute(query, (limit,))
+                raw_results = {row[0]: row[1] for row in cursor.fetchall()}
+            
+            # Generar todos los dias del rango
+            all_days = []
+            today = datetime.datetime.now().date()
+            for i in range(limit - 1, -1, -1):  # limit-1 dias atras hasta hoy
+                day = today - datetime.timedelta(days=i)
+                day_str = day.strftime("%Y-%m-%d")
+                amount = raw_results.get(day_str, 0)
+                all_days.append((day_str, amount))
+            
+            return all_days
+        except Exception as e:
+            print(f"Error fetching history: {e}")
+            return []

@@ -41,22 +41,36 @@ source venv/bin/activate
 python gui.py
 ```
 
-## ⚙️ Funcionamiento
+## ⚙️ Funcionamiento y GUI
 
-1.  Al iniciar, se abrirá una ventana
-2.  Conecta tu móvil y asegúrate de que ADB lo reconoce (`adb devices`).
-3.  Pulsa **Iniciar** en la GUI.
-4.  El bot:
-    *   Abrirá Real Racing 3 si no está en primer plano.
-    *   Buscará ofertas de anuncios de oro.
-    *   Verá los anuncios y los cerrará.
-    *   Recolectará la recompensa.
-    *   Si se acaban los anuncios, puede intentar cambiar la zona horaria (Kiritimati/Madrid) si está configurado.
+1.  **Ventana Principal**:
+    *   **Iniciar/Parar**: Control del ciclo del bot.
+    *   **Live View**: Muestra lo que el bot está viendo en tiempo real.
+    *   **Métricas**: Oro ganado hoy, total histórico y ritmo (Oro/Hora).
+2.  **Gráfico de Ganancias**:
+    *   Haz click en el icono de gráfico para ver el histórico de los últimos 7 días.
+    *   Se actualiza automáticamente cada minuto mientras la ventana esté abierta.
+3.  **Ciclo Automático**:
+    *   El bot busca la moneda de oro, confirma el anuncio, lo ve y cierra la ventana de recompensa.
+    *   **Kiritimati Trick**: Si "No hay más anuncios" aparece, el bot cambiará automáticamente la zona horaria del dispositivo entre Madrid y Kiribati para resetear el límite de anuncios.
+
+## 🛠 Solución de Problemas (Troubleshooting)
+
+### El bot se queda atascado en el cambio de zona horaria
+*   **Posible causa**: La lupa de búsqueda en Ajustes de Android ha cambiado de posición.
+*   **Solución**: El bot intenta usar OCR para encontrarla, pero si falla, puedes verificar el archivo `main.py` -> `handle_timezone_sequence` y ajustar las coordenadas de fallback o los términos de búsqueda ("Kiribati", "Espa").
+
+### El bot no cierra los anuncios
+*   **Posible causa**: El botón "X" es muy pequeño o tiene un diseño nuevo.
+*   **Solución**: El bot usa detección dinámica de "X". Asegúrate de que el brillo de la pantalla en la captura se vea bien (no negro).
+
+### Errores de ADB
+*   Asegúrate de que solo hay un dispositivo conectado o especifica el serial si es necesario.
+*   Prueba a reiniciar el servidor: `adb kill-server && adb start-server`.
 
 ## ⚠️ Notas Importantes
 
-*   **Bloqueo de Pantallas**: El bot intenta mantener el dispositivo activo, pero es mejor configurar el móvil para que la pantalla no se apague nunca mientras carga.
-*   **Interrupción**: Para detener el bot de forma segura, pulsa "Parar" en la GUI o presiona `Ctrl+C` en la terminal.
-*   **Logs**: Se guarda un registro de ganancias en `gold_log.db`.
+*   **Horario de Funcionamiento**: Por defecto, el bot solo opera de **12:00 a 00:00** (Configurable en `config.py`). Fuera de ese horario entrará en pausa automática.
+*   **Logs**: Todos los registros se guardan en `gold_log.db` (SQLite). No lo borres si quieres conservar las estadísticas.
 
 Para información técnica más detallada, consulta [AGENTS.md](AGENTS.md).
