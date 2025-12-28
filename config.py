@@ -17,7 +17,12 @@ SEARCH_ICON_TEMPLATE = "search_icon.png"
 SEARCH_ICON_TEMPLATE = "search_icon.png"
 WEB_BAR_CLOSE_TEMPLATE = "web_bar_close_v2.png"
 # Lista de botones de cierre de recompensa (para manejar variantes con cursor, etc.)
+# Lista de botones de cierre de recompensa (para manejar variantes con cursor, etc.)
 REWARD_CLOSE_TEMPLATES = ["reward_close.png", "reward_close_cursor.png"]
+
+# Nuevos Assets para identificar Lobby (Robustez)
+LOBBY_TEMPLATE_1 = "lobby_asset_1.png"
+LOBBY_TEMPLATE_2 = "lobby_asset_2.png"
 
 # Calibración de Pantalla (Desktop Mapping)
 # REMOVED: Ya no usamos desktop_tap, usamos ADB directo.

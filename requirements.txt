@@ -3,3 +3,5 @@ numpy
 Pillow
 pytesseract
 adbutils
+torch
+torchvision

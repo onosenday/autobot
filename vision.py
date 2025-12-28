@@ -178,21 +178,21 @@ class Vision:
 
     def find_fast_forward_button(self, image):
         """
-        Busca el botón de Fast Forward (>>) usando el asset provisto (ff_button.png)
-        y su canal Alpha como máscara para ignorar el fondo.
+        Busca el botón de Fast Forward (>>) usando MULTIPLES assets (ff_button*.png)
+        y lógica fall-back generativa.
         """
-        template_path = "assets/ff_button.png"
-        template = cv2.imread(template_path, cv2.IMREAD_UNCHANGED)
+        import glob
+        import os
         
-        if template is None:
-            print("⚠ Asset ff_button.png no encontrado. Usando lógica generativa (backup)...")
-            return self.find_fast_forward_button_backup(image)
+        # Buscar todos los patrones
+        asset_pattern = os.path.join("assets", "ff_button*.png")
+        files = glob.glob(asset_pattern)
+        
+        if not files:
+            # print("⚠ Ningún asset ff_button*.png encontrado. Usando lógica generativa...")
+            pass # Seguirá al final
 
-        # Try to find match with file
-        found_file_match = None
-        
         height, width = image.shape[:2]
-        
         # ROIs: Esquinas (25%)
         roi_size_w = int(width * 0.25)
         roi_size_h = int(height * 0.25)
@@ -202,8 +202,12 @@ class Vision:
             ("bottom_right", width - roi_size_w, height - roi_size_h, width, height)
         ]
 
-        if template is not None:
-            # Usar BGR directo (mascara da problemas con esta version de opencv)
+        # 1. Iterar sobre todos los archivos encontrados
+        for f_path in files:
+            template = cv2.imread(f_path, cv2.IMREAD_UNCHANGED)
+            if template is None: continue
+
+            # Usar BGR directo
             tmpl_bgr = template[:, :, :3] if template.shape[2] == 4 else template
             
             for roi_name, x1, y1, x2, y2 in rois:
@@ -211,10 +215,11 @@ class Vision:
                 res = cv2.matchTemplate(roi_img, tmpl_bgr, cv2.TM_CCOEFF_NORMED)
                 min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
                 
-                if max_val > 0.70:  # Threshold aumentado para reducir falsos positivos
+                if max_val > 0.70:
                     h, w = tmpl_bgr.shape[:2]
                     global_x = x1 + max_loc[0] + w // 2
                     global_y = y1 + max_loc[1] + h // 2
+                    # print(f"Match FF con archivo '{os.path.basename(f_path)}': {max_val:.2f}")
                     return (global_x, global_y, w, h)
 
         # Fallback: Generative logic (The shape user described: >>|)

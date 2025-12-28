@@ -106,4 +106,4 @@ python gui.py
 *   **Horario de Funcionamiento**: Por defecto, el bot solo opera de **12:00 a 00:00** (Configurable en `config.py`). Fuera de ese horario entrará en pausa automática.
 *   **Logs**: Todos los registros se guardan en `gold_log.db` (SQLite). No lo borres si quieres conservar las estadísticas.
 
-Para información técnica más detallada, consulta [AGENTS.md](AGENTS.md).
+

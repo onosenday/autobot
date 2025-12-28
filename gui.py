@@ -27,7 +27,8 @@ class BotGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Real Racing 3 Bot Control")
-        self.root.geometry("960x700")
+        # Aumentado ancho a 1200 para acomodar las 3 columnas sin cortes
+        self.root.geometry("1200x720")
         self.root.configure(bg="#102A43") # Match Theme BG
         
         self.adb_preview = ADBWrapper()
@@ -53,6 +54,30 @@ class BotGUI:
         self.session_start_time = None
         self.session_initial_gold = 0
         self.current_session_gold = 0
+        
+        # Window Handles (Singleton)
+        self.chart_window = None
+        self.calendar_window = None
+        self.chart_offset = 0 # Offset de dias para la grafica
+
+        self.chart_offset = 0 # Offset de dias para la grafica
+
+    def _schedule_battery_update(self):
+        """Actualiza estado de bateria cada 30s."""
+        try:
+             level = self.adb_preview.get_battery_level()
+             if level is not None:
+                 # 5 Niveles de Color para Batería
+                 if level < 20: color = "#FC8181"   # Red (Critical)
+                 elif level < 40: color = "#DD6B20" # Orange (Low)
+                 elif level < 60: color = "#F6E05E" # Yellow (Mid)
+                 elif level < 80: color = "#68D391" # Light Green (Good)
+                 else: color = "#38A169"            # Green (Full)
+                 
+                 self.lbl_battery.config(text=f"{level}%", fg=color)
+        except:
+             pass
+        self.root.after(30000, self._schedule_battery_update)
 
     def _apply_theme(self):
         style = ttk.Style()
@@ -105,7 +130,16 @@ class BotGUI:
         left_panel.pack(side=tk.LEFT, fill=tk.Y, padx=(0,1))
         
         # LOGO / HEADER
-        ttk.Label(left_panel, text="RR3\nCOMMAND\nCENTER", style="Header.TLabel", justify=tk.LEFT).pack(anchor=tk.W, pady=(0, 25))
+        ttk.Label(left_panel, text="RR3\nCOMMAND\nCENTER", style="Header.TLabel", justify=tk.LEFT).pack(anchor=tk.W, pady=(0, 15))
+        
+        # BATTERY STAT
+        self.batt_frame = tk.Frame(left_panel, bg="#1E3246")
+        self.batt_frame.pack(anchor=tk.W, pady=(0, 25))
+        tk.Label(self.batt_frame, text="🔋 BATERÍA: ", fg="#829AB1", bg="#1E3246", font=("Segoe UI", 9)).pack(side=tk.LEFT)
+        self.lbl_battery = tk.Label(self.batt_frame, text="--%", fg="#A0AEC0", bg="#1E3246", font=("Segoe UI", 9, "bold"))
+        self.lbl_battery.pack(side=tk.LEFT)
+        self._schedule_battery_update()
+
 
         # CONTROL PRINCIPAL
         ttk.Label(left_panel, text="CONTROL DE MISIÓN", style="Stat.TLabel").pack(anchor=tk.W, pady=(0,5))
@@ -238,6 +272,7 @@ class BotGUI:
         self.log_area.tag_config("error", foreground="#FC8181")    # Red
         self.log_area.tag_config("state", foreground="#63B3ED")    # Blue
         self.log_area.tag_config("success", foreground="#68D391")  # Green
+        self.log_area.tag_config("ml", foreground="#D6BCFA", font=("Consolas", 10, "italic")) # Purple Italic for ML
         self.log_area.tag_config("highlight", foreground="#D9E2EC", font=("Consolas", 10, "bold"))
 
 
@@ -281,6 +316,7 @@ class BotGUI:
                 "⚠": "error", "❌": "error", "Error": "error",
                 "🔄": "state", 
                 "✅": "success", "Listo": "success",
+                "🧠": "ml", "🧪": "ml", # ML Icons match ML tag
                 "👀": "state", "👉": "state", "🔍": "state", "⌨": "state", "🖱": "state"
             }
             
@@ -432,7 +468,8 @@ class BotGUI:
                 stop_event=self.stop_event,
                 log_callback=self.log_message,
                 image_callback=self.update_image,
-                stats_callback=self.update_stats
+                stats_callback=self.update_stats,
+                monitor_callback=self.ml_monitor.submit if self.ml_monitor else None
             )
             self.bot_instance.run()
         except Exception as e:
@@ -449,87 +486,136 @@ class BotGUI:
             self.root.after(0, self._reset_buttons)
 
     def _show_history_chart(self):
-        """Muestra popup con gráfica de barras de últimos 7 días con auto-refresh."""
-        # Popup setup
+        """Muestra popup con gráfica de barras navegable."""
+        if self.chart_window is not None and self.chart_window.winfo_exists():
+            self.chart_window.lift()
+            return
+
+        self.chart_offset = 0 # Reset al abrir
+
         popup = tk.Toplevel(self.root)
+        self.chart_window = popup
         popup.title("Historial de Ganancias")
-        popup.geometry("600x400")
+        popup.geometry("600x450")
         popup.configure(bg="#102A43")
         
-        # Header
-        ttk.Label(popup, text="Últimos 7 Días", font=("Segoe UI", 16, "bold"), background="#102A43", foreground="#D9E2EC").pack(pady=10)
+        # Header Navegable
+        header = tk.Frame(popup, bg="#102A43")
+        header.pack(fill=tk.X, padx=20, pady=10)
+        
+        btn_prev = tk.Button(header, text="◀", font=("Segoe UI", 12), 
+                            bg="#102A43", fg="#4FD1C5", bd=0, cursor="hand2",
+                            command=lambda: navigate(7)) # Mas antiguo (+offset)
+        btn_prev.pack(side=tk.LEFT)
+        
+        lbl_range = tk.Label(header, text="Últimos 7 Días", font=("Segoe UI", 16, "bold"), 
+                            bg="#102A43", fg="#D9E2EC")
+        lbl_range.pack(side=tk.LEFT, expand=True)
+        
+        btn_next = tk.Button(header, text="▶", font=("Segoe UI", 12), 
+                            bg="#102A43", fg="#4FD1C5", bd=0, cursor="hand2",
+                            command=lambda: navigate(-7)) # Mas reciente (-offset)
+        btn_next.pack(side=tk.RIGHT)
         
         # Canvas
-        cw, ch = 550, 300
+        cw, ch = 550, 320
         canvas = tk.Canvas(popup, width=cw, height=ch, bg="#1E3246", highlightthickness=0)
         canvas.pack(pady=10, padx=20)
         
-        def _refresh_data():
-            # Check if popup still valid
+        def navigate(delta):
+            self.chart_offset += delta
+            if self.chart_offset < 0: self.chart_offset = 0
+            refresh_chart()
+
+        def refresh_chart():
             try:
                 if not popup.winfo_exists(): return
-            except:
-                return
+            except: return
                 
             canvas.delete("all")
-            data = self.logger.get_daily_history(7)
             
+            # Obtener datos con offset
+            data = self.logger.get_daily_history(7, offset=self.chart_offset)
+            
+            # Actualizar etiqueta de rango
+            if self.chart_offset == 0:
+                lbl_range.config(text="Últimos 7 Días")
+                btn_next.config(state=tk.DISABLED, fg="#243B53")
+            else:
+                end_date = datetime.now() - timedelta(days=self.chart_offset)
+                start_date = end_date - timedelta(days=6)
+                lbl_range.config(text=f"{start_date.strftime('%d/%m')} - {end_date.strftime('%d/%m')}")
+                btn_next.config(state=tk.NORMAL, fg="#4FD1C5")
+
             if not data:
                 canvas.create_text(cw/2, ch/2, text="Sin datos...", fill="#829AB1", font=("Segoe UI", 12))
             else:
-                # Draw Logic
+                # Max para normalizar
                 max_val = max(d[1] for d in data) if data else 1
+                if max_val == 0: max_val = 1
+                
                 bar_width = cw / len(data) * 0.6
                 spacing = cw / len(data) * 0.4
                 
-                # Margins
-                margin_bottom = 30
-                margin_top = 20
+                margin_bottom = 40
+                margin_top = 30
                 draw_h = ch - margin_bottom - margin_top
                 
                 x_start = spacing / 2
                 
                 for i, (date_str, amount) in enumerate(data):
-                    # Height relative to max
                     h_bar = (amount / max_val) * draw_h
-                    if h_bar < 2: h_bar = 2 # min visible
+                    if amount > 0 and h_bar < 2: h_bar = 2
                     
                     x0 = x_start + i * (bar_width + spacing)
                     y0 = ch - margin_bottom
                     x1 = x0 + bar_width
                     y1 = y0 - h_bar
                     
-                    # Color based on amount?
-                    color = "#4FD1C5" if amount > 50 else "#63B3ED"
+                    # Heatmap Logic (Misma que calendario)
+                    color = "#2C5282"
+                    if amount > 0:
+                        ratio = amount / max_val
+                        if ratio < 0.2: color = "#3182CE"
+                        elif ratio < 0.4: color = "#38B2AC"
+                        elif ratio < 0.6: color = "#48BB78"
+                        elif ratio < 0.8: color = "#D69E2E"
+                        else: color = "#DD6B20"
+                    else:
+                        color = "#243B53" # Empty
                     
-                    # Bar
-                    canvas.create_rectangle(x0, y0, x1, y1, fill=color, outline="")
+                    if amount > 0:
+                        canvas.create_rectangle(x0, y0, x1, y1, fill=color, outline="")
+                        # Value
+                        canvas.create_text((x0+x1)/2, y1 - 10, text=f"{amount}", fill="#FFFFFF", font=("Segoe UI", 9, "bold"))
                     
-                    # Value Label
-                    canvas.create_text((x0+x1)/2, y1 - 10, text=f"{amount}", fill="#FFFFFF", font=("Segoe UI", 8))
-                    
-                    # Date Label (dd-mm-yy)
-                    # date_str is YYYY-MM-DD
+                    # Date Label
                     try:
                         y, m, d = date_str.split('-')
-                        formatted_date = f"{d}-{m}-{y[2:]}"
+                        formatted_date = f"{d}/{m}"
                     except:
                         formatted_date = date_str
-                        
+                    
                     canvas.create_text((x0+x1)/2, y0 + 15, text=formatted_date, fill="#829AB1", font=("Segoe UI", 8))
-            
-            # Schedule next refresh in 60s
-            popup.after(60000, _refresh_data)
 
-        # First trigger
-        _refresh_data()
+            # Auto-refresh solo si estamos en offset 0 (Live)
+            if self.chart_offset == 0:
+                 popup.after(60000, refresh_chart)
+
+        refresh_chart()
 
 
     def _show_calendar_view(self):
         """Muestra popup con vista de calendario mensual navegable."""
+        # Singleton Check
+        if self.calendar_window is not None and self.calendar_window.winfo_exists():
+            self.calendar_window.lift()
+            return
+
         import calendar
         
         popup = tk.Toplevel(self.root)
+        self.calendar_window = popup
         popup.title("Calendario de Ganancias")
         popup.geometry("500x420")
         popup.configure(bg="#102A43")
@@ -599,6 +685,11 @@ class BotGUI:
                 return {}
         
         def refresh_calendar():
+            # Check if popup still valid
+            try:
+                if not popup.winfo_exists(): return
+            except: return
+
             year, month = current_date
             month_names = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
                           "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
@@ -611,6 +702,9 @@ class BotGUI:
             cal = calendar.Calendar(firstweekday=0)  # Lunes primero
             month_days = cal.monthdayscalendar(year, month)
             
+            # Calcular Max del mes para normalizar
+            max_gold = max(month_data.values()) if month_data else 1
+            
             # Limpiar y rellenar
             for row_idx, row_labels in enumerate(day_labels):
                 for col_idx, lbl in enumerate(row_labels):
@@ -622,21 +716,37 @@ class BotGUI:
                             day_str = f"{year:04d}-{month:02d}-{day:02d}"
                             gold = month_data.get(day_str, 0)
                             
-                            # Color segun oro
-                            if gold > 100:
-                                bg_color = "#276749"  # Verde oscuro
-                                fg_color = "#F6E05E"
-                            elif gold > 0:
-                                bg_color = "#2C5282"  # Azul
-                                fg_color = "#F6E05E"
-                            else:
-                                bg_color = "#243B53"
-                                fg_color = "#829AB1"
+                            # Heatmap 5 Colores
+                            # 1. Azul (Muy bajo) -> 5. Rojo/Naranja (Top)
+                            bg_color = "#243B53" # Default (0)
+                            fg_color = "#829AB1"
+                            
+                            if gold > 0:
+                                ratio = gold / max_gold
+                                
+                                if ratio < 0.2:
+                                    bg_color = "#3182CE" # Blue 500
+                                    fg_color = "#FFFFFF"
+                                elif ratio < 0.4:
+                                    bg_color = "#38B2AC" # Teal 400
+                                    fg_color = "#FFFFFF"
+                                elif ratio < 0.6:
+                                    bg_color = "#48BB78" # Green 400
+                                    fg_color = "#FFFFFF"
+                                elif ratio < 0.8:
+                                    bg_color = "#D69E2E" # Yellow 600 (Darker for contrast)
+                                    fg_color = "#FFFFFF"
+                                else:
+                                    bg_color = "#DD6B20" # Orange 600
+                                    fg_color = "#FFFFFF"
                             
                             display = f"{day}\n{gold}" if gold > 0 else str(day)
                             lbl.config(text=display, bg=bg_color, fg=fg_color)
                     else:
                         lbl.config(text="", bg="#1E3246")
+            
+            # Schedule next refresh
+            popup.after(60000, refresh_calendar)
         
         def navigate(delta):
             current_date[1] += delta
@@ -737,6 +847,8 @@ class BotGUI:
         logs = self.ml_trainer.get_logs()
         for log in logs:
             self.lbl_ml_status.config(text=log)
+            # También enviar al log principal para persistencia
+            self.log_message(f"🧠 {log}")
         
         # Actualizar cada 500ms
         self.root.after(500, self._update_training_progress)
@@ -761,6 +873,7 @@ class BotGUI:
         self.btn_ml_test.config(state=tk.DISABLED)
         
         def _run_test():
+            self.log_message("🧪 Monitor: Iniciando evaluación...")
             result = self.ml_evaluator.evaluate()
             self.root.after(0, lambda: self._on_test_complete(result))
         
@@ -775,6 +888,7 @@ class BotGUI:
         else:
             acc = result.get('accuracy', 0)
             total = result.get('total_samples', 0)
+            self.log_message(f"🧪 Test Completo: {acc:.1f}% ({total} muestras)")
             self.lbl_ml_status.config(text=f"Test: {acc:.1f}% ({total} muestras)")
             self.lbl_ml_accuracy.config(text=f"{acc:.1f}%")
     
@@ -782,20 +896,24 @@ class BotGUI:
         """Activa/desactiva monitor en tiempo real."""
         if not self.ml_monitor:
             self.lbl_ml_status.config(text="Error: ML no inicializado")
+            self.log_message("❌ Error: ML no inicializado")
             return
         
         if self.ml_monitor.is_active:
             self.ml_monitor.stop()
             self.btn_ml_activate.config(text="Activar", bg="#805AD5")
             self.lbl_ml_status.config(text="Monitor detenido")
+            self.log_message("🧠 Monitor de ML detenido.")
             self.lbl_ml_concordance.config(text="--", fg="#A0AEC0")
         else:
             if not self.ml_monitor.model.is_trained:
                 self.lbl_ml_status.config(text="Error: Modelo no entrenado")
+                self.log_message("❌ Error: Modelo no entrenado")
                 return
             self.ml_monitor.start()
             self.btn_ml_activate.config(text="Detener", bg="#E53E3E")
             self.lbl_ml_status.config(text="Monitor activo")
+            self.log_message("🧠 Monitor de ML activado.")
             self._update_monitor_stats()
     
     def _update_monitor_stats(self):

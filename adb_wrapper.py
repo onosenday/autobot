@@ -40,6 +40,16 @@ class ADBWrapper:
              pass
         return (0, 0)
 
+    def get_battery_level(self):
+        """Devuelve el nivel de bateria (0-100) o None si falla."""
+        out = self._run_command(["dumpsys", "battery", "|", "grep", "level"])
+        if out:
+             # Output: "  level: 85"
+             match = re.search(r"level:\s+(\d+)", out)
+             if match:
+                 return int(match.group(1))
+        return None
+
     def _ensure_connection(self):
         if self.device is None:
             self._connect_client()
@@ -81,13 +91,18 @@ class ADBWrapper:
     def is_connected(self):
         """Devuelve True si el dispositivo está conectado y respondiendo."""
         if not self.device:
+            # Intentar reconectar si perdimos la instancia
+            self._connect_client()
+            
+        if not self.device:
             return False
+
         try:
             # Comprobación ligera: obtener estado
             state = self.device.get_state()
             return state == "device"
         except Exception:
-            # Si falla, intentar reconectar
+            # Si falla, intentar reconectar en la siguiente llamada
             self.device = None
             return False
 

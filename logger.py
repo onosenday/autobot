@@ -159,31 +159,37 @@ class GoldLogger:
         except Exception:
             return 0
 
-    def get_daily_history(self, limit=7):
+    def get_daily_history(self, limit=7, offset=0):
         """
-        Retorna lista de tuplas (fecha, total_oro) de los ultimos 'limit' dias.
+        Retorna lista de tuplas (fecha, total_oro) de 'limit' dias, 
+        terminando en (Hoy - offset_dias).
         INCLUYE dias vacios (sin actividad) con valor 0.
         Formato fecha: YYYY-MM-DD
         Orden: Ascendente por fecha.
         """
         try:
+            today = datetime.datetime.now().date()
+            end_date = today - datetime.timedelta(days=offset)
+            start_date = end_date - datetime.timedelta(days=limit - 1)
+            
+            s_str = start_date.strftime("%Y-%m-%d")
+            e_str = end_date.strftime("%Y-%m-%d")
+
             with sqlite3.connect(self.db_path) as conn:
-                # Obtener datos existentes
+                # Obtener datos existentes en el rango
                 query = """
                     SELECT substr(timestamp, 1, 10) as day, SUM(amount)
                     FROM gold_history
+                    WHERE day BETWEEN ? AND ?
                     GROUP BY day
-                    ORDER BY day DESC
-                    LIMIT ?
                 """
-                cursor = conn.execute(query, (limit,))
+                cursor = conn.execute(query, (s_str, e_str))
                 raw_results = {row[0]: row[1] for row in cursor.fetchall()}
             
             # Generar todos los dias del rango
             all_days = []
-            today = datetime.datetime.now().date()
-            for i in range(limit - 1, -1, -1):  # limit-1 dias atras hasta hoy
-                day = today - datetime.timedelta(days=i)
+            for i in range(limit - 1, -1, -1):
+                day = end_date - datetime.timedelta(days=i)
                 day_str = day.strftime("%Y-%m-%d")
                 amount = raw_results.get(day_str, 0)
                 all_days.append((day_str, amount))

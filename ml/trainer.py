@@ -183,6 +183,11 @@ class ModelTrainer:
                 
                 self.log(f"Dataset: {train_size} train, {val_size} val")
                 
+                # Check Device
+                device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+                self.log(f"Usando dispositivo: {device}")
+                self.model.to(device)
+                
                 # Optimizer y loss
                 optimizer = optim.Adam(self.model.parameters(), lr=lr)
                 criterion = nn.CrossEntropyLoss()
@@ -198,12 +203,20 @@ class ModelTrainer:
                     total_loss = 0.0
                     
                     for batch_idx, (images, labels) in enumerate(train_loader):
+                        images, labels = images.to(device), labels.to(device)
+                        
                         optimizer.zero_grad()
                         outputs = self.model(images)
                         loss = criterion(outputs, labels)
                         loss.backward()
                         optimizer.step()
                         total_loss += loss.item()
+                        
+                        # Feedback intrra-epoch
+                        batches_10_percent = max(1, len(train_loader) // 10)
+                        if (batch_idx + 1) % batches_10_percent == 0:
+                            current_progress = (batch_idx + 1) / len(train_loader) * 100
+                            self.log(f"Epoch {epoch+1} Progress: {current_progress:.0f}% (Loss: {loss.item():.4f})")
                     
                     avg_loss = total_loss / len(train_loader)
                     self.current_loss = avg_loss
@@ -215,6 +228,7 @@ class ModelTrainer:
                     
                     with torch.no_grad():
                         for images, labels in val_loader:
+                            images, labels = images.to(device), labels.to(device)
                             outputs = self.model(images)
                             _, predicted = torch.max(outputs, 1)
                             total += labels.size(0)
