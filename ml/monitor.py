@@ -36,12 +36,15 @@ class LiveMonitor:
         
         # Thread
         self._thread = None
+        self.prediction_callback = None
+        
+        # Cargar modelo
         
         # Cargar modelo
         if not self.model.load(model_path):
             print("[Monitor] No model loaded")
     
-    def start(self):
+    def start(self, prediction_callback=None):
         """Inicia el monitor en un thread separado."""
         if self.is_running:
             return
@@ -49,6 +52,8 @@ class LiveMonitor:
         if not self.model.is_trained:
             print("[Monitor] Model not trained")
             return
+            
+        self.prediction_callback = prediction_callback
         
         self.is_active = True
         self.is_running = True
@@ -109,6 +114,12 @@ class LiveMonitor:
                 # Calcular concordancia (sobre ultimas 100)
                 if len(self.recent_results) > 0:
                     self.concordance = sum(self.recent_results) / len(self.recent_results) * 100
+                    
+                # Callback to GUI
+                if self.prediction_callback:
+                    # (is_correct, predicted_label, confidence, actual_label)
+                    # Need to map int back to string or just pass ints/bools
+                    self.prediction_callback(is_correct, predicted_class_idx, confidence, actual_class_idx)
                 
             except queue.Empty:
                 continue

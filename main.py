@@ -52,7 +52,7 @@ class Action(Enum):
     NONE = 99
 
 class RealRacingBot:
-    def __init__(self, stop_event=None, log_callback=None, image_callback=None, stats_callback=None, monitor_callback=None):
+    def __init__(self, stop_event=None, log_callback=None, image_callback=None, stats_callback=None, monitor_callback=None, click_callback=None):
         self.adb = ADBWrapper()
         self.vision = Vision()
         self.ocr = OCR()
@@ -91,7 +91,9 @@ class RealRacingBot:
         self.log_callback = log_callback
         self.image_callback = image_callback
         self.stats_callback = stats_callback
+        self.stats_callback = stats_callback
         self.monitor_callback = monitor_callback
+        self.click_callback = click_callback
 
         # Cargar stats iniciales
         if self.stats_callback:
@@ -136,6 +138,10 @@ class RealRacingBot:
         Opcionalmente registra la accion ML.
         """
         self.log(f"ADB Tap en ({int(x)}, {int(y)})")
+        
+        # Click Visualization Callback
+        if self.click_callback:
+            self.click_callback(x, y)
         
         # ML Logging
         if action:
@@ -625,14 +631,8 @@ class RealRacingBot:
         match_no_gold = self._find_template_with_memory(screenshot, NO_MORE_GOLD_TEMPLATE, "tmpl_no_more_gold")
         if match_no_gold:
             self.log("Detectado 'No hay más anuncios'. Iniciando ciclo Timezone.")
-            # Chequear modo restringido (00-12)
-            now_hour = datetime.datetime.now().hour
-            if 0 <= now_hour < 12:
-                 self.log("⏳ MODO RESTRINGIDO: Pausando hasta las 12:00...")
-                 self.state = BotState.UNKNOWN
-                 time.sleep(60)
-                 return
-
+            # Restriccion horaria ELIMINADA para modo experimental 24h
+            # El ciclo matutino se gestiona en TZ_INIT
             self.state = BotState.TZ_INIT
             return
 
@@ -694,7 +694,8 @@ class RealRacingBot:
         elif result == "LOBBY":
              self.state = BotState.GAME_LOBBY
         else:
-             self.state = BotState.GAME_LOBBY # Fallback
+             self.log("Resultado Ad Watching incierto. Estado -> UNKNOWN")
+             self.state = BotState.UNKNOWN
 
     def check_lobby_anchors(self, screenshot):
         """
@@ -879,9 +880,19 @@ class RealRacingBot:
 
             time.sleep(1.5)
             
-        self.log("Timeout viendo anuncio.")
+        self.log("Timeout viendo anuncio. Intentando salir con BACK...")
         self.adb.input_keyevent(4) # Back
-        return "LOBBY"
+        time.sleep(2.0)
+        
+        # Verify if we managed to exit
+        scr = self.adb.take_screenshot()
+        self.update_live_view(scr)
+        if self.check_lobby_anchors(scr):
+             self.log("Recuperado a Lobby exitosamente.")
+             return "LOBBY"
+             
+        self.log("No se detectó Lobby tras Timeout. Estado -> UNKNOWN")
+        return "UNKNOWN"
 
     def handle_reward_screen(self, screenshot=None):
         """
@@ -956,20 +967,17 @@ class RealRacingBot:
         """Sub-máquina para Timezone."""
         if self.state == BotState.TZ_INIT:
              # Refresh timezone real ONLY if needed or periodically?
-             # Optimization: Trust internal state if valid to save ADB call ~1-2s
              if self.current_timezone_state == "UNKNOWN":
                  real_tz = self.check_device_timezone()
                  if real_tz != "UNKNOWN":
                      self.current_timezone_state = real_tz
              
-             target = self.state_data.get("target_zone")
-             if not target:
-                 current = self.current_timezone_state
-                 if current == "UNKNOWN":
-                      self.log("Estado Zona UNKNOWN. Asumiendo que estabamos en MADRID y vamos a KIRITIMATI.")
-                      target = "KIRITIMATI"
-                 else:
-                      target = "KIRITIMATI" if current == "MADRID" else "MADRID"
+             # Toggle simple entre MADRID y KIRITIMATI
+             current = self.current_timezone_state
+             if current == "MADRID":
+                 target = "KIRITIMATI"
+             else:
+                 target = "MADRID"
              
              self.state_data["target_zone"] = target
              self.log(f"Iniciando secuencia TZ hacia: {target}")
@@ -986,6 +994,7 @@ class RealRacingBot:
              
              # Need fresh screen after opening settings
              scr = self.adb.take_screenshot()
+             self.update_live_view(scr)
              
              h_scr, w_scr = scr.shape[:2]
              limit_y = int(h_scr * 0.85)
@@ -1023,11 +1032,14 @@ class RealRacingBot:
                  
         elif self.state == BotState.TZ_INPUT_SEARCH:
              target = self.state_data["target_zone"]
-             term = "Kiribati" if target == "KIRITIMATI" else "Espa"
+             
+             term = "Espa" # Default Madrid
+             if target == "KIRITIMATI": term = "Kiribati"
              
              self.log(f"Buscando lupa para: {term}")
              time.sleep(0.5) # Reduced from 1.0s
              scr = self.adb.take_screenshot()
+             self.update_live_view(scr)
              
              # Buscar LUPA con find_template directo (threshold 0.7, check_negative)
              template_path = os.path.join(ASSETS_DIR, SEARCH_ICON_TEMPLATE)
@@ -1060,7 +1072,8 @@ class RealRacingBot:
              
         elif self.state == BotState.TZ_SELECT_COUNTRY:
              target = self.state_data["target_zone"]
-             term = "Kiribati" if target == "KIRITIMATI" else "Espa"
+             term = "Espa"
+             if target == "KIRITIMATI": term = "Kiribati"
              
              if self._wait_click_country_result(term):
                  self.log(f"País {term} seleccionado.")
@@ -1071,7 +1084,9 @@ class RealRacingBot:
                  
         elif self.state == BotState.TZ_SELECT_CITY:
              target = self.state_data["target_zone"]
-             city = "Kiritimati" if target == "KIRITIMATI" else "Madrid"
+             
+             city = "Madrid"
+             if target == "KIRITIMATI": city = "Kiritimati"
              memory_key = f"tz_city_{city.lower()}"
              
              # Smart Retry Init

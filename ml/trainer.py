@@ -172,14 +172,22 @@ class ModelTrainer:
                     return
                 
                 # Split train/val
+                # Split train/val SEQUENTIAL (Time Series)
+                # Random split causes data leakage in highly correlated frames
                 train_size = int(len(dataset) * train_split)
                 val_size = len(dataset) - train_size
-                train_dataset, val_dataset = torch.utils.data.random_split(
-                    dataset, [train_size, val_size]
-                )
                 
+                # Manual sequential split
+                indices = list(range(len(dataset)))
+                train_indices = indices[:train_size]
+                val_indices = indices[train_size:]
+                
+                train_dataset = torch.utils.data.Subset(dataset, train_indices)
+                val_dataset = torch.utils.data.Subset(dataset, val_indices)
+                
+                # Shuffle only TRAIN set
                 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-                val_loader = DataLoader(val_dataset, batch_size=batch_size)
+                val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
                 
                 self.log(f"Dataset: {train_size} train, {val_size} val")
                 

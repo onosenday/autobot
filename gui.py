@@ -41,6 +41,30 @@ class BotGUI:
         
         self.bot_instance = None
         
+        self.logo_photo = None
+        try:
+            # Robust Path Resolution
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            logo_path = os.path.join(base_dir, "assets", "app_logo.png")
+            print(f"DEBUG: Intentando cargar logo desde: {logo_path}")
+            
+            if os.path.exists(logo_path):
+                # UI Logo (Load Logic)
+                pil_img = Image.open(logo_path)
+                
+                # Window Icon (Use PIL object)
+                icon_photo = ImageTk.PhotoImage(pil_img)
+                self.root.iconphoto(True, icon_photo)
+                
+                # Banner Logo (Resize Larger)
+                pil_resized = pil_img.resize((100, 100), Image.Resampling.LANCZOS)
+                self.logo_photo = ImageTk.PhotoImage(pil_resized)
+                print("DEBUG: Logo cargado correctamente.")
+            else:
+                print(f"DEBUG: Logo NO encontrado en {logo_path}")
+        except Exception as e:
+            print(f"Error loading logo: {e}")
+
         self._apply_theme()
         self._setup_ui()
         self._start_queue_processing()
@@ -48,6 +72,14 @@ class BotGUI:
         # Hilo de preview constante
         self.preview_thread = threading.Thread(target=self._run_idle_preview, daemon=True)
         self.preview_thread.start()
+        
+        # Overlay Drawing State
+        self.current_pil_image = None
+        self.current_photo = None
+        self.current_ratio = 1.0
+        self.current_x_offset = 0
+        self.current_y_offset = 0
+        self.bg_image_id = None # ID for persistent background image
 
         # Session Data
         self.logger = GoldLogger()
@@ -58,9 +90,16 @@ class BotGUI:
         # Window Handles (Singleton)
         self.chart_window = None
         self.calendar_window = None
+        # Window Handles (Singleton)
+        self.chart_window = None
+        self.calendar_window = None
         self.chart_offset = 0 # Offset de dias para la grafica
-
-        self.chart_offset = 0 # Offset de dias para la grafica
+        
+        # Click Visualization
+        self.active_clicks = [] # Stores (x, y, timestamp)
+        
+        # ML Visualization
+        self.latest_prediction = None # (is_correct, pred_label, confidence, timestamp)
 
     def _schedule_battery_update(self):
         """Actualiza estado de bateria cada 30s."""
@@ -106,7 +145,7 @@ class BotGUI:
         # Labels
         style.configure("TLabel", background=BG_MAIN, foreground=FG_TEXT)
         style.configure("Panel.TLabel", background=BG_PANEL, foreground=FG_TEXT)
-        style.configure("Header.TLabel", font=("Segoe UI", 20, "bold"), foreground="#627D98", background=BG_PANEL)
+        style.configure("Header.TLabel", font=("Segoe UI", 14, "bold"), foreground="#627D98", background=BG_PANEL)
         
         style.configure("Stat.TLabel", background=BG_PANEL, foreground="#829AB1", font=("Segoe UI", 8)) 
         style.configure("StatValue.TLabel", background=BG_PANEL, font=("Segoe UI", 14, "bold")) 
@@ -130,7 +169,13 @@ class BotGUI:
         left_panel.pack(side=tk.LEFT, fill=tk.Y, padx=(0,1))
         
         # LOGO / HEADER
-        ttk.Label(left_panel, text="RR3\nCOMMAND\nCENTER", style="Header.TLabel", justify=tk.LEFT).pack(anchor=tk.W, pady=(0, 15))
+        header_frame = tk.Frame(left_panel, bg="#1E3246") # Match Panel BG
+        header_frame.pack(anchor=tk.W, pady=(0, 15))
+        
+        if self.logo_photo:
+            tk.Label(header_frame, image=self.logo_photo, bg="#1E3246").pack(side=tk.LEFT, padx=(0, 10))
+            
+        ttk.Label(header_frame, text="RR3\nCOMMAND\nCENTER", style="Header.TLabel", justify=tk.LEFT).pack(side=tk.LEFT)
         
         # BATTERY STAT
         self.batt_frame = tk.Frame(left_panel, bg="#1E3246")
@@ -157,6 +202,12 @@ class BotGUI:
         
         self.lbl_status = tk.Label(self.status_frame, text="INACTIVO", fg="#A0AEC0", bg="#1E3246", font=("Segoe UI", 12, "bold"))
         self.lbl_status.pack(anchor=tk.W)
+
+
+
+        # CAPTURE BUTTON
+        self.btn_capture = ttk.Button(left_panel, text="📸 CAPTURA PANTALLA", command=self._capture_screen, style="Action.TButton")
+        self.btn_capture.pack(fill=tk.X, pady=(0, 20))
         
         # ML NEURAL NET SECTION
         ttk.Label(left_panel, text="RED NEURONAL (BRAIN)", style="Stat.TLabel").pack(anchor=tk.W, pady=(10,5))
@@ -363,12 +414,12 @@ class BotGUI:
                 
                 if clean_msg:
                     self.lbl_status.config(text=clean_msg)
-                
+
         self.root.after(100, self._process_logs)
 
     def _process_images(self):
         try:
-            # Consumir la última imagen y descartar anteriores para no laggy
+            # 1. Update Image State if new frame available
             latest_image = None
             while not self.image_queue.empty():
                 latest_image = self.image_queue.get_nowait()
@@ -386,18 +437,52 @@ class BotGUI:
                 
                 pil_image = pil_image.resize((new_w, new_h), Image.Resampling.LANCZOS)
                 
-                self.photo = ImageTk.PhotoImage(pil_image)
+                # Store State
+                self.current_pil_image = pil_image
+                self.current_photo = ImageTk.PhotoImage(pil_image)
+                self.current_ratio = ratio
+                self.current_x_offset = (target_w - new_w) // 2
+                self.current_y_offset = (target_h - new_h) // 2
                 
-                # Centrar en canvas
-                x_pos = (target_w - new_w) // 2
-                y_pos = (target_h - new_h) // 2
+                # Update BG Image Item
+                if self.bg_image_id:
+                     self.canvas.itemconfig(self.bg_image_id, image=self.current_photo)
+                     self.canvas.coords(self.bg_image_id, self.current_x_offset, self.current_y_offset)
+                else:
+                     self.bg_image_id = self.canvas.create_image(self.current_x_offset, self.current_y_offset, image=self.current_photo, anchor=tk.NW, tags="bg")
+                     self.canvas.tag_lower("bg") # Ensure background is always at bottom
+
+            # 2. Update Overlays (Animation Loop)
+            if self.current_photo:
+                # Clear ONLY overlays
+                self.canvas.delete("overlay")
                 
-                self.canvas.delete("all")
-                self.canvas.create_image(x_pos, y_pos, image=self.photo, anchor=tk.NW)
-        except Exception:
+                # Draw Active Clicks
+                current_time = time.time()
+                self.active_clicks = [c for c in self.active_clicks if current_time - c[2] < 1.0]
+                
+                for (cx, cy, ts) in self.active_clicks:
+                    draw_x = self.current_x_offset + (cx * self.current_ratio)
+                    draw_y = self.current_y_offset + (cy * self.current_ratio)
+                    
+                    elapsed = current_time - ts
+                    radius_anim = 10 + (elapsed * 20)
+                    
+                    # Canvas Tags="overlay"
+                    self.canvas.create_oval(draw_x-radius_anim, draw_y-radius_anim, draw_x+radius_anim, draw_y+radius_anim, outline="#F56565", width=3, tags="overlay")
+                
+                # Draw ML Prediction Overlay
+                if self.latest_prediction:
+                    is_correct, pred_idx, conf, ts = self.latest_prediction
+                    if time.time() - ts < 3.0: 
+                        color = "#48BB78" if is_correct else "#F56565"
+                        text = f"AI: Class {pred_idx} ({conf*100:.0f}%)"
+                        self.canvas.create_text(10, 350, anchor=tk.SW, text=text, fill=color, font=("Segoe UI", 12, "bold"), tags="overlay")
+
+        except Exception as e:
             pass
             
-        self.root.after(200, self._process_images)
+        self.root.after(100, self._process_images) # Optimizado a 100ms (10FPS)
 
     def _run_idle_preview(self):
         """Toma capturas periodicas cuando el bot no está corriendo."""
@@ -416,6 +501,14 @@ class BotGUI:
                 time.sleep(1.5) # 1.5s refresh rate pare idle
             else:
                 time.sleep(1) # Dormir mientras el bot corre (él manda las imagenes)
+
+    def visualize_click(self, x, y):
+        """Callback para registrar clicks del bot."""
+        self.active_clicks.append((x, y, time.time()))
+
+    def visualize_prediction(self, is_correct, pred_idx, confidence, actual_idx):
+        """Callback para visualizar predicciones ML."""
+        self.latest_prediction = (is_correct, pred_idx, confidence, time.time())
 
     def start_bot(self):
         if self.bot_thread and self.bot_thread.is_alive():
@@ -469,7 +562,8 @@ class BotGUI:
                 log_callback=self.log_message,
                 image_callback=self.update_image,
                 stats_callback=self.update_stats,
-                monitor_callback=self.ml_monitor.submit if self.ml_monitor else None
+                monitor_callback=self.ml_monitor.submit if self.ml_monitor else None,
+                click_callback=self.visualize_click
             )
             self.bot_instance.run()
         except Exception as e:
@@ -484,6 +578,41 @@ class BotGUI:
 
             self.log_message("Bot detenido.")
             self.root.after(0, self._reset_buttons)
+
+        refresh_chart()
+
+    def _capture_screen(self):
+        """Captura la pantalla y la guarda en disco."""
+        import os
+        from datetime import datetime
+        
+        # Crear directorio si no existe
+        if not os.path.exists("screenshots"):
+            os.makedirs("screenshots")
+            
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"screenshots/capture_{timestamp}.png"
+        
+        def save_task():
+            try:
+                # Prioridad: Bot Instance (si corre), sino ADB Preview
+                img = None
+                if self.is_bot_running and self.bot_instance:
+                    img = self.bot_instance.adb.take_screenshot()
+                else:
+                    img = self.adb_preview.take_screenshot()
+                
+                if img is not None:
+                    # Save using OpenCV
+                    cv2.imwrite(filename, img)
+                    self.log_message(f"📸 Captura guardada: {filename}")
+                else:
+                    self.log_message("❌ Error: No se pudo capturar imagen.")
+            except Exception as e:
+                self.log_message(f"❌ Error al capturar: {e}")
+        
+        # Ejecutar en hilo para no bloquear GUI
+        threading.Thread(target=save_task, daemon=True).start()
 
     def _show_history_chart(self):
         """Muestra popup con gráfica de barras navegable."""
@@ -901,7 +1030,7 @@ class BotGUI:
         
         if self.ml_monitor.is_active:
             self.ml_monitor.stop()
-            self.btn_ml_activate.config(text="Activar", bg="#805AD5")
+            self.btn_ml_activate.config(text="⚡ Activar Monitor", bg="#805AD5")
             self.lbl_ml_status.config(text="Monitor detenido")
             self.log_message("🧠 Monitor de ML detenido.")
             self.lbl_ml_concordance.config(text="--", fg="#A0AEC0")
@@ -910,8 +1039,8 @@ class BotGUI:
                 self.lbl_ml_status.config(text="Error: Modelo no entrenado")
                 self.log_message("❌ Error: Modelo no entrenado")
                 return
-            self.ml_monitor.start()
-            self.btn_ml_activate.config(text="Detener", bg="#E53E3E")
+            self.ml_monitor.start(prediction_callback=self.visualize_prediction)
+            self.btn_ml_activate.config(text="⏹ Detener Monitor", bg="#C53030")
             self.lbl_ml_status.config(text="Monitor activo")
             self.log_message("🧠 Monitor de ML activado.")
             self._update_monitor_stats()
