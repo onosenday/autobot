@@ -102,22 +102,43 @@ class BotGUI:
         # ML Visualization
         self.latest_prediction = None # (is_correct, pred_label, confidence, timestamp)
 
-    def _schedule_battery_update(self):
-        """Actualiza estado de bateria cada 30s."""
+    def _schedule_device_status_update(self):
+        """Actualiza estado de batería, WiFi y brillo cada 30s."""
         try:
-             level = self.adb_preview.get_battery_level()
-             if level is not None:
-                 # 5 Niveles de Color para Batería
-                 if level < 20: color = "#FC8181"   # Red (Critical)
-                 elif level < 40: color = "#DD6B20" # Orange (Low)
-                 elif level < 60: color = "#F6E05E" # Yellow (Mid)
-                 elif level < 80: color = "#68D391" # Light Green (Good)
-                 else: color = "#38A169"            # Green (Full)
-                 
-                 self.lbl_battery.config(text=f"{level}%", fg=color)
+            # Batería
+            level = self.adb_preview.get_battery_level()
+            if level is not None:
+                # 5 Niveles de Color para Batería
+                if level < 20: color = "#FC8181"   # Red (Critical)
+                elif level < 40: color = "#DD6B20" # Orange (Low)
+                elif level < 60: color = "#F6E05E" # Yellow (Mid)
+                elif level < 80: color = "#68D391" # Light Green (Good)
+                else: color = "#38A169"            # Green (Full)
+                
+                self.lbl_battery.config(text=f"{level}%", fg=color)
+            
+            # WiFi
+            wifi_status = self.adb_preview.is_wifi_enabled()
+            if wifi_status is True:
+                self.lbl_wifi.config(text="ON", fg="#68D391")  # Green
+            elif wifi_status is False:
+                self.lbl_wifi.config(text="OFF", fg="#FC8181")  # Red
+            else:
+                self.lbl_wifi.config(text="--", fg="#A0AEC0")
+            
+            # Brillo
+            brightness = self.adb_preview.get_brightness()
+            if brightness is not None:
+                # Convertir 0-255 a porcentaje
+                pct = int((brightness / 255) * 100)
+                if pct < 10: color = "#68D391"   # Green (Low = good for battery)
+                elif pct < 50: color = "#F6E05E" # Yellow
+                else: color = "#FC8181"          # Red (High = draining battery)
+                
+                self.lbl_brightness.config(text=f"{pct}%", fg=color)
         except:
-             pass
-        self.root.after(30000, self._schedule_battery_update)
+            pass
+        self.root.after(30000, self._schedule_device_status_update)
 
     def _apply_theme(self):
         style = ttk.Style()
@@ -158,6 +179,21 @@ class BotGUI:
         
         style.configure("Small.TButton", padding=5, relief="flat", background=ACCENT, foreground=FG_TEXT, borderwidth=0, font=("Segoe UI", 8))
 
+        # Combobox (para selector de idioma)
+        style.configure("TCombobox",
+                        fieldbackground=BG_CARD,
+                        background=ACCENT,
+                        foreground=FG_TEXT,
+                        arrowcolor=FG_TEXT,
+                        bordercolor=ACCENT,
+                        lightcolor=BG_CARD,
+                        darkcolor=BG_CARD,
+                        insertcolor=FG_TEXT)
+        style.map("TCombobox",
+                  fieldbackground=[('readonly', BG_CARD)],
+                  foreground=[('readonly', FG_TEXT)],
+                  background=[('readonly', ACCENT)])
+
     def _setup_ui(self):
         # Master Container 3 Columnas
         main_container = ttk.Frame(self.root, style="Main.TFrame")
@@ -179,14 +215,35 @@ class BotGUI:
         self.lbl_header = ttk.Label(header_frame, text=t("header_title"), style="Header.TLabel", justify=tk.LEFT)
         self.lbl_header.pack(side=tk.LEFT)
         
-        # BATTERY STAT
-        self.batt_frame = tk.Frame(left_panel, bg="#1E3246")
-        self.batt_frame.pack(anchor=tk.W, pady=(0, 15))
-        self.lbl_battery_label = tk.Label(self.batt_frame, text=t("battery_label"), fg="#829AB1", bg="#1E3246", font=("Segoe UI", 9))
+        # DEVICE STATUS ROW (Battery, WiFi, Brightness)
+        self.status_row = tk.Frame(left_panel, bg="#1E3246")
+        self.status_row.pack(anchor=tk.W, pady=(0, 15))
+        
+        # Battery
+        self.lbl_battery_label = tk.Label(self.status_row, text=t("battery_label"), fg="#829AB1", bg="#1E3246", font=("Segoe UI", 9))
         self.lbl_battery_label.pack(side=tk.LEFT)
-        self.lbl_battery = tk.Label(self.batt_frame, text="--%", fg="#A0AEC0", bg="#1E3246", font=("Segoe UI", 9, "bold"))
+        self.lbl_battery = tk.Label(self.status_row, text="--%", fg="#A0AEC0", bg="#1E3246", font=("Segoe UI", 9, "bold"))
         self.lbl_battery.pack(side=tk.LEFT)
-        self._schedule_battery_update()
+        
+        # Separator
+        tk.Label(self.status_row, text="  │  ", fg="#4A5568", bg="#1E3246", font=("Segoe UI", 9)).pack(side=tk.LEFT)
+        
+        # WiFi
+        self.lbl_wifi_label = tk.Label(self.status_row, text=t("wifi_label"), fg="#829AB1", bg="#1E3246", font=("Segoe UI", 9))
+        self.lbl_wifi_label.pack(side=tk.LEFT)
+        self.lbl_wifi = tk.Label(self.status_row, text="--", fg="#A0AEC0", bg="#1E3246", font=("Segoe UI", 9, "bold"))
+        self.lbl_wifi.pack(side=tk.LEFT)
+        
+        # Separator
+        tk.Label(self.status_row, text="  │  ", fg="#4A5568", bg="#1E3246", font=("Segoe UI", 9)).pack(side=tk.LEFT)
+        
+        # Brightness
+        self.lbl_brightness_label = tk.Label(self.status_row, text=t("brightness_label"), fg="#829AB1", bg="#1E3246", font=("Segoe UI", 9))
+        self.lbl_brightness_label.pack(side=tk.LEFT)
+        self.lbl_brightness = tk.Label(self.status_row, text="--", fg="#A0AEC0", bg="#1E3246", font=("Segoe UI", 9, "bold"))
+        self.lbl_brightness.pack(side=tk.LEFT)
+        
+        self._schedule_device_status_update()
 
         # LANGUAGE SELECTOR
         self.lang_frame = tk.Frame(left_panel, bg="#1E3246")

@@ -1,20 +1,18 @@
 {
     "app_title": "Real Racing 3 Bot Control",
     "header_title": "RR3\nCOMMAND\nCENTER",
-    
-    "battery_label": "🔋 BATERÍA: ",
-    
+    "battery_label": "🔋 ",
+    "wifi_label": "📶 ",
+    "brightness_label": "🔅 ",
     "control_section": "CONTROL DE MISIÓN",
     "btn_start": "▶ INICIAR OPERACIÓN",
     "btn_stop": "⏹ DETENER",
     "btn_capture": "📸 CAPTURA PANTALLA",
-    
     "status_section": "ESTADO ACTUAL",
     "status_inactive": "INACTIVO",
     "status_starting": "Iniciando...",
     "status_stopping": "Deteniendo...",
     "status_stopped": "Detenido",
-    
     "ml_section": "RED NEURONAL (BRAIN)",
     "btn_ml_train": "🧠 Entrenar",
     "btn_ml_test": "🧪 Testear",
@@ -31,33 +29,48 @@
     "ml_training_started": "Iniciando entrenamiento...",
     "ml_training_complete": "Completado! Accuracy: {accuracy}%",
     "ml_training_error": "Error en entrenamiento",
-    
     "log_header": "TERMINAL DE REGISTRO",
     "preview_header": "VISIÓN EN TIEMPO REAL (ADB LIVE)",
-    
     "stats_section": "RENDIMIENTO",
     "stat_session_time": "TIEMPO SESIÓN",
     "stat_session_gold": "ORO (SESIÓN)",
     "stat_gold_rate": "RITMO (GC/H)",
     "stat_ads_rate": "VELOCIDAD (ADS/H)",
     "stat_total_history": "TOTAL HISTÓRICO",
-    
     "btn_chart": "📊 Ver Gráfica",
     "btn_calendar": "📅 Calendario",
-    
     "ml_metrics_section": "MÉTRICAS ML",
     "ml_metric_accuracy": "Precisión",
     "ml_metric_samples": "Capturas",
     "ml_metric_concordance": "Concordancia",
-    
     "chart_title": "Historial de Ganancias",
     "chart_last_days": "Últimos 7 Días",
     "chart_no_data": "Sin datos...",
-    
     "calendar_title": "Calendario de Ganancias",
-    "calendar_months": ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"],
-    "calendar_days": ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"],
-    
+    "calendar_months": [
+        "",
+        "Enero",
+        "Febrero",
+        "Marzo",
+        "Abril",
+        "Mayo",
+        "Junio",
+        "Julio",
+        "Agosto",
+        "Septiembre",
+        "Octubre",
+        "Noviembre",
+        "Diciembre"
+    ],
+    "calendar_days": [
+        "Lun",
+        "Mar",
+        "Mie",
+        "Jue",
+        "Vie",
+        "Sab",
+        "Dom"
+    ],
     "msg_stopping_bot": "Deteniendo bot... espere a que termine la acción actual.",
     "msg_bot_stopped": "Bot detenido.",
     "msg_bot_error": "Error crítico en bot: {error}",
@@ -65,7 +78,6 @@
     "msg_capture_saved": "📸 Captura guardada: {filename}",
     "msg_capture_error": "❌ Error: No se pudo capturar imagen.",
     "msg_capture_failed": "❌ Error al capturar: {error}",
-    
     "language_section": "IDIOMA",
     "language_names": {
         "es": "Español",

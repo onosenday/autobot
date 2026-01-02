@@ -1,7 +1,9 @@
 {
     "app_title": "Real Racing 3 Bot Control",
     "header_title": "RR3\nKONTROLL-\nZENTRUM",
-    "battery_label": "🔋 AKKU: ",
+    "battery_label": "🔋 ",
+    "wifi_label": "📶 ",
+    "brightness_label": "🔅 ",
     "control_section": "MISSIONSSTEUERUNG",
     "btn_start": "▶ OPERATION STARTEN",
     "btn_stop": "⏹ STOPPEN",

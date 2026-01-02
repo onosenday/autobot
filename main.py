@@ -451,6 +451,18 @@ class RealRacingBot:
             self.stop_event.set()
             return
 
+        # ===== CONFIGURACIÓN INICIAL DEL DISPOSITIVO =====
+        # Activar WiFi si está desactivado
+        if self.adb.ensure_wifi_enabled():
+            self.log("📶 WiFi activado automáticamente.")
+        else:
+            self.log("📶 WiFi ya estaba activo.")
+        
+        # Poner brillo al mínimo para ahorrar batería
+        self.log("🔅 Configurando brillo al mínimo...")
+        self.adb.set_brightness_min()
+        # ================================================
+
         # Verificar si el juego está corriendo
         self.log(f"Verificando estado de {PACKAGE_NAME}...")
         if self.adb.get_current_package() != PACKAGE_NAME:

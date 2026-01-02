@@ -196,3 +196,65 @@ class ADBWrapper:
                  return match.group(1)
                  
         return "UNKNOWN"
+
+    # =========================================================================
+    # BRIGHTNESS CONTROL
+    # =========================================================================
+    
+    def get_brightness(self):
+        """Devuelve el nivel de brillo actual (0-255) o None si falla."""
+        out = self._run_command(["settings", "get", "system", "screen_brightness"])
+        if out:
+            try:
+                return int(out.strip())
+            except ValueError:
+                pass
+        return None
+
+    def set_brightness_min(self):
+        """Pone el brillo al mínimo (0) y desactiva brillo automático."""
+        # Desactivar brillo automático
+        self._run_command(["settings", "put", "system", "screen_brightness_mode", "0"])
+        # Poner brillo al mínimo
+        self._run_command(["settings", "put", "system", "screen_brightness", "0"])
+
+    def set_brightness(self, level):
+        """Establece el brillo a un nivel específico (0-255)."""
+        level = max(0, min(255, level))
+        self._run_command(["settings", "put", "system", "screen_brightness_mode", "0"])
+        self._run_command(["settings", "put", "system", "screen_brightness", str(level)])
+
+    def restore_brightness(self, level=128):
+        """Restaura el brillo a un nivel razonable (por defecto 50%)."""
+        self.set_brightness(level)
+
+    # =========================================================================
+    # WIFI CONTROL
+    # =========================================================================
+    
+    def is_wifi_enabled(self):
+        """Devuelve True si WiFi está activado, False si no, None si error."""
+        out = self._run_command(["settings", "get", "global", "wifi_on"])
+        if out:
+            try:
+                return int(out.strip()) == 1
+            except ValueError:
+                pass
+        return None
+
+    def enable_wifi(self):
+        """Activa el WiFi."""
+        self._run_command(["svc", "wifi", "enable"])
+
+    def disable_wifi(self):
+        """Desactiva el WiFi."""
+        self._run_command(["svc", "wifi", "disable"])
+
+    def ensure_wifi_enabled(self):
+        """Verifica que el WiFi esté activado. Si no, lo activa. Retorna True si tuvo que activarlo."""
+        wifi_status = self.is_wifi_enabled()
+        if wifi_status is False:
+            self.enable_wifi()
+            return True
+        return False
+
