@@ -14,6 +14,7 @@ from logger import GoldLogger
 from ml.trainer import ModelTrainer
 from ml.evaluator import ModelEvaluator
 from ml.monitor import LiveMonitor
+from i18n import t, get_current_language, set_language, get_supported_languages, get_language_name, register_language_change_callback
 
 
 # Importamos la clase del bot (que refactorizaremos en breve)
@@ -26,7 +27,7 @@ except ImportError:
 class BotGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Real Racing 3 Bot Control")
+        self.root.title(t("app_title"))
         # Aumentado ancho a 1200 para acomodar las 3 columnas sin cortes
         self.root.geometry("1200x720")
         self.root.configure(bg="#102A43") # Match Theme BG
@@ -175,57 +176,78 @@ class BotGUI:
         if self.logo_photo:
             tk.Label(header_frame, image=self.logo_photo, bg="#1E3246").pack(side=tk.LEFT, padx=(0, 10))
             
-        ttk.Label(header_frame, text="RR3\nCOMMAND\nCENTER", style="Header.TLabel", justify=tk.LEFT).pack(side=tk.LEFT)
+        self.lbl_header = ttk.Label(header_frame, text=t("header_title"), style="Header.TLabel", justify=tk.LEFT)
+        self.lbl_header.pack(side=tk.LEFT)
         
         # BATTERY STAT
         self.batt_frame = tk.Frame(left_panel, bg="#1E3246")
-        self.batt_frame.pack(anchor=tk.W, pady=(0, 25))
-        tk.Label(self.batt_frame, text="🔋 BATERÍA: ", fg="#829AB1", bg="#1E3246", font=("Segoe UI", 9)).pack(side=tk.LEFT)
+        self.batt_frame.pack(anchor=tk.W, pady=(0, 15))
+        self.lbl_battery_label = tk.Label(self.batt_frame, text=t("battery_label"), fg="#829AB1", bg="#1E3246", font=("Segoe UI", 9))
+        self.lbl_battery_label.pack(side=tk.LEFT)
         self.lbl_battery = tk.Label(self.batt_frame, text="--%", fg="#A0AEC0", bg="#1E3246", font=("Segoe UI", 9, "bold"))
         self.lbl_battery.pack(side=tk.LEFT)
         self._schedule_battery_update()
 
+        # LANGUAGE SELECTOR
+        self.lang_frame = tk.Frame(left_panel, bg="#1E3246")
+        self.lang_frame.pack(anchor=tk.W, pady=(0, 25))
+        self.lbl_lang_section = tk.Label(self.lang_frame, text=t("language_section"), fg="#829AB1", bg="#1E3246", font=("Segoe UI", 8))
+        self.lbl_lang_section.pack(anchor=tk.W)
+        
+        # Crear lista de idiomas para el combobox
+        lang_names = [get_language_name(code) for code in get_supported_languages()]
+        self.lang_combo = ttk.Combobox(self.lang_frame, values=lang_names, state="readonly", width=12)
+        
+        # Seleccionar idioma actual
+        current_lang = get_current_language()
+        current_idx = get_supported_languages().index(current_lang) if current_lang in get_supported_languages() else 0
+        self.lang_combo.current(current_idx)
+        self.lang_combo.pack(anchor=tk.W, pady=(5, 0))
+        self.lang_combo.bind("<<ComboboxSelected>>", self._on_language_change)
 
         # CONTROL PRINCIPAL
-        ttk.Label(left_panel, text="CONTROL DE MISIÓN", style="Stat.TLabel").pack(anchor=tk.W, pady=(0,5))
+        self.lbl_control_section = ttk.Label(left_panel, text=t("control_section"), style="Stat.TLabel")
+        self.lbl_control_section.pack(anchor=tk.W, pady=(0,5))
         
-        self.btn_start = ttk.Button(left_panel, text="▶ INICIAR OPERACIÓN", command=self.start_bot, style="Action.TButton")
+        self.btn_start = ttk.Button(left_panel, text=t("btn_start"), command=self.start_bot, style="Action.TButton")
         self.btn_start.pack(fill=tk.X, pady=(0, 8))
         
-        self.btn_stop = ttk.Button(left_panel, text="⏹ DETENER", command=self.stop_bot, state=tk.DISABLED, style="Action.TButton")
+        self.btn_stop = ttk.Button(left_panel, text=t("btn_stop"), command=self.stop_bot, state=tk.DISABLED, style="Action.TButton")
         self.btn_stop.pack(fill=tk.X, pady=(0, 20))
         
         # STATUS INDICATOR
         self.status_frame = tk.Frame(left_panel, bg="#1E3246")
         self.status_frame.pack(fill=tk.X, pady=(0, 20))
-        tk.Label(self.status_frame, text="ESTADO ACTUAL", fg="#829AB1", bg="#1E3246", font=("Segoe UI", 8)).pack(anchor=tk.W)
+        self.lbl_status_section = tk.Label(self.status_frame, text=t("status_section"), fg="#829AB1", bg="#1E3246", font=("Segoe UI", 8))
+        self.lbl_status_section.pack(anchor=tk.W)
         
-        self.lbl_status = tk.Label(self.status_frame, text="INACTIVO", fg="#A0AEC0", bg="#1E3246", font=("Segoe UI", 12, "bold"))
+        self.lbl_status = tk.Label(self.status_frame, text=t("status_inactive"), fg="#A0AEC0", bg="#1E3246", font=("Segoe UI", 12, "bold"))
         self.lbl_status.pack(anchor=tk.W)
 
 
 
         # CAPTURE BUTTON
-        self.btn_capture = ttk.Button(left_panel, text="📸 CAPTURA PANTALLA", command=self._capture_screen, style="Action.TButton")
+        self.btn_capture = ttk.Button(left_panel, text=t("btn_capture"), command=self._capture_screen, style="Action.TButton")
         self.btn_capture.pack(fill=tk.X, pady=(0, 20))
         
         # ML NEURAL NET SECTION
-        ttk.Label(left_panel, text="RED NEURONAL (BRAIN)", style="Stat.TLabel").pack(anchor=tk.W, pady=(10,5))
+        self.lbl_ml_section = ttk.Label(left_panel, text=t("ml_section"), style="Stat.TLabel")
+        self.lbl_ml_section.pack(anchor=tk.W, pady=(10,5))
         
         ml_frame = tk.Frame(left_panel, bg="#1E3246")
         ml_frame.pack(fill=tk.X)
         
         # Buttons ML Grid
-        self.btn_ml_train = tk.Button(ml_frame, text="🧠 Entrenar", bg="#4A5568", fg="white", bd=0, command=self._ml_train, cursor="hand2")
+        self.btn_ml_train = tk.Button(ml_frame, text=t("btn_ml_train"), bg="#4A5568", fg="white", bd=0, command=self._ml_train, cursor="hand2")
         self.btn_ml_train.pack(fill=tk.X, pady=2)
         
-        self.btn_ml_test = tk.Button(ml_frame, text="🧪 Testear", bg="#38A169", fg="white", bd=0, command=self._ml_test, cursor="hand2")
+        self.btn_ml_test = tk.Button(ml_frame, text=t("btn_ml_test"), bg="#38A169", fg="white", bd=0, command=self._ml_test, cursor="hand2")
         self.btn_ml_test.pack(fill=tk.X, pady=2)
         
-        self.btn_ml_activate = tk.Button(ml_frame, text="⚡ Activar Monitor", bg="#805AD5", fg="white", bd=0, command=self._ml_toggle_monitor, cursor="hand2")
+        self.btn_ml_activate = tk.Button(ml_frame, text=t("btn_ml_activate"), bg="#805AD5", fg="white", bd=0, command=self._ml_toggle_monitor, cursor="hand2")
         self.btn_ml_activate.pack(fill=tk.X, pady=2)
         
-        self.lbl_ml_status = tk.Label(ml_frame, text="Ready", bg="#1E3246", fg="#718096", font=("Segoe UI", 8))
+        self.lbl_ml_status = tk.Label(ml_frame, text=t("ml_status_ready"), bg="#1E3246", fg="#718096", font=("Segoe UI", 8))
         self.lbl_ml_status.pack(anchor=tk.W, pady=(5,0))
 
         # =========================================================================
@@ -237,7 +259,8 @@ class BotGUI:
         # LOGS HEADER
         log_header = tk.Frame(center_panel, bg="#102A43")
         log_header.pack(fill=tk.X, pady=(0, 5))
-        tk.Label(log_header, text="TERMINAL DE REGISTRO", fg="#627D98", bg="#102A43", font=("Consolas", 10, "bold")).pack(side=tk.LEFT)
+        self.lbl_log_header = tk.Label(log_header, text=t("log_header"), fg="#627D98", bg="#102A43", font=("Consolas", 10, "bold"))
+        self.lbl_log_header.pack(side=tk.LEFT)
         
         # LOG AREA (Arriba)
         self.log_area = scrolledtext.ScrolledText(center_panel, height=12, state=tk.DISABLED, 
@@ -251,7 +274,8 @@ class BotGUI:
         # LIVE VIEW HEADER
         view_header = tk.Frame(center_panel, bg="#102A43")
         view_header.pack(fill=tk.X, pady=(0, 5))
-        tk.Label(view_header, text="VISIÓN EN TIEMPO REAL (ADB LIVE)", fg="#627D98", bg="#102A43", font=("Consolas", 10, "bold")).pack(side=tk.LEFT)
+        self.lbl_preview_header = tk.Label(view_header, text=t("preview_header"), fg="#627D98", bg="#102A43", font=("Consolas", 10, "bold"))
+        self.lbl_preview_header.pack(side=tk.LEFT)
         
         # PREVIEW CONTAINER (Abajo)
         # Ratio 16:9 for 640px width -> 360px height
@@ -268,36 +292,40 @@ class BotGUI:
         right_panel = ttk.Frame(main_container, style="Panel.TFrame", padding=15)
         right_panel.pack(side=tk.RIGHT, fill=tk.Y, padx=(1,0))
         
-        ttk.Label(right_panel, text="RENDIMIENTO", style="Stat.TLabel").pack(anchor=tk.W, pady=(0,15))
+        self.lbl_stats_section = ttk.Label(right_panel, text=t("stats_section"), style="Stat.TLabel")
+        self.lbl_stats_section.pack(anchor=tk.W, pady=(0,15))
         
         # SESSION TIMER
-        self.lbl_runtime = self._create_stat_block(right_panel, "TIEMPO SESIÓN", "00:00:00", "#63B3ED")
+        self.lbl_runtime = self._create_stat_block(right_panel, t("stat_session_time"), "00:00:00", "#63B3ED")
         
         # GOLD SESSION
-        self.lbl_gold = self._create_stat_block(right_panel, "ORO (SESIÓN)", "0", "#F6E05E")
+        self.lbl_gold = self._create_stat_block(right_panel, t("stat_session_gold"), "0", "#F6E05E")
         
         # GOLD RATE
-        self.lbl_gold_speed = self._create_stat_block(right_panel, "RITMO (GC/H)", "0", "#F6E05E")
+        self.lbl_gold_speed = self._create_stat_block(right_panel, t("stat_gold_rate"), "0", "#F6E05E")
         
         # ADS RATE
-        self.lbl_speed = self._create_stat_block(right_panel, "VELOCIDAD (ADS/H)", "0.0", "#63B3ED")
+        self.lbl_speed = self._create_stat_block(right_panel, t("stat_ads_rate"), "0.0", "#63B3ED")
         
         # TOTAL HISTORY
-        self.lbl_gold_history = self._create_stat_block(right_panel, "TOTAL HISTÓRICO", "--", "#CBD5E0")
+        self.lbl_gold_history = self._create_stat_block(right_panel, t("stat_total_history"), "--", "#CBD5E0")
         
         # GRAPHS & CALENDAR
         btn_frame = tk.Frame(right_panel, bg="#1E3246")
         btn_frame.pack(fill=tk.X, pady=20)
         
-        tk.Button(btn_frame, text="📊 Ver Gráfica", bg="#2D3748", fg="white", bd=0, pady=5, command=self._show_history_chart).pack(fill=tk.X, pady=2)
-        tk.Button(btn_frame, text="📅 Calendario", bg="#2D3748", fg="white", bd=0, pady=5, command=self._show_calendar_view).pack(fill=tk.X, pady=2)
+        self.btn_chart = tk.Button(btn_frame, text=t("btn_chart"), bg="#2D3748", fg="white", bd=0, pady=5, command=self._show_history_chart)
+        self.btn_chart.pack(fill=tk.X, pady=2)
+        self.btn_calendar = tk.Button(btn_frame, text=t("btn_calendar"), bg="#2D3748", fg="white", bd=0, pady=5, command=self._show_calendar_view)
+        self.btn_calendar.pack(fill=tk.X, pady=2)
         
         # ML METRICS MINI-DASH
-        ttk.Label(right_panel, text="MÉTRICAS ML", style="Stat.TLabel").pack(anchor=tk.W, pady=(20,10))
+        self.lbl_ml_metrics_section = ttk.Label(right_panel, text=t("ml_metrics_section"), style="Stat.TLabel")
+        self.lbl_ml_metrics_section.pack(anchor=tk.W, pady=(20,10))
         
-        self.lbl_ml_accuracy = self._create_metric_row(right_panel, "Precisión", "N/A", "#9F7AEA")
-        self.lbl_ml_samples = self._create_metric_row(right_panel, "Capturas", "0", "#A0AEC0")
-        self.lbl_ml_concordance = self._create_metric_row(right_panel, "Concordancia", "--", "#A0AEC0")
+        self.lbl_ml_accuracy = self._create_metric_row(right_panel, t("ml_metric_accuracy"), "N/A", "#9F7AEA")
+        self.lbl_ml_samples = self._create_metric_row(right_panel, t("ml_metric_samples"), "0", "#A0AEC0")
+        self.lbl_ml_concordance = self._create_metric_row(right_panel, t("ml_metric_concordance"), "--", "#A0AEC0")
 
         # Initialize ML components
         self._init_ml_components()
@@ -510,6 +538,56 @@ class BotGUI:
         """Callback para visualizar predicciones ML."""
         self.latest_prediction = (is_correct, pred_idx, confidence, time.time())
 
+    def _on_language_change(self, event=None):
+        """Callback cuando el usuario cambia el idioma en el combobox."""
+        selected_idx = self.lang_combo.current()
+        lang_codes = get_supported_languages()
+        if 0 <= selected_idx < len(lang_codes):
+            new_lang = lang_codes[selected_idx]
+            if set_language(new_lang):
+                self._refresh_all_texts()
+
+    def _refresh_all_texts(self):
+        """Actualiza todos los textos de la GUI con el idioma actual."""
+        # Título de la ventana
+        self.root.title(t("app_title"))
+        
+        # Panel izquierdo
+        self.lbl_header.config(text=t("header_title"))
+        self.lbl_battery_label.config(text=t("battery_label"))
+        self.lbl_lang_section.config(text=t("language_section"))
+        self.lbl_control_section.config(text=t("control_section"))
+        self.btn_start.config(text=t("btn_start"))
+        self.btn_stop.config(text=t("btn_stop"))
+        self.lbl_status_section.config(text=t("status_section"))
+        self.btn_capture.config(text=t("btn_capture"))
+        self.lbl_ml_section.config(text=t("ml_section"))
+        self.btn_ml_train.config(text=t("btn_ml_train"))
+        self.btn_ml_test.config(text=t("btn_ml_test"))
+        
+        # Actualizar botón ML según estado
+        if hasattr(self, 'ml_monitor') and self.ml_monitor and self.ml_monitor.is_active:
+            self.btn_ml_activate.config(text=t("btn_ml_deactivate"))
+        else:
+            self.btn_ml_activate.config(text=t("btn_ml_activate"))
+        
+        # Si el status actual no es un estado del bot, actualizarlo
+        current_status = self.lbl_status.cget("text")
+        if current_status in ["INACTIVO", "INACTIVE", "INACTIF", "INAKTIV", "INATTIVO"]:
+            self.lbl_status.config(text=t("status_inactive"))
+        elif current_status in ["Detenido", "Stopped", "Arrêté", "Gestoppt", "Fermato"]:
+            self.lbl_status.config(text=t("status_stopped"))
+        
+        # Panel central
+        self.lbl_log_header.config(text=t("log_header"))
+        self.lbl_preview_header.config(text=t("preview_header"))
+        
+        # Panel derecho
+        self.lbl_stats_section.config(text=t("stats_section"))
+        self.btn_chart.config(text=t("btn_chart"))
+        self.btn_calendar.config(text=t("btn_calendar"))
+        self.lbl_ml_metrics_section.config(text=t("ml_metrics_section"))
+
     def start_bot(self):
         if self.bot_thread and self.bot_thread.is_alive():
             return
@@ -518,7 +596,7 @@ class BotGUI:
         self.stop_event.clear()
         self.btn_start.config(state=tk.DISABLED)
         self.btn_stop.config(state=tk.NORMAL)
-        self.lbl_status.config(text="Iniciando...", foreground="#63B3ED")
+        self.lbl_status.config(text=t("status_starting"), foreground="#63B3ED")
         
         self.bot_thread = threading.Thread(target=self._run_bot_thread, daemon=True)
         self.bot_thread.start()
@@ -545,16 +623,16 @@ class BotGUI:
 
     def stop_bot(self):
         if self.bot_thread and self.bot_thread.is_alive():
-            self.log_message("Deteniendo bot... espere a que termine la acción actual.")
+            self.log_message(t("msg_stopping_bot"))
             self.stop_event.set()
-            self.lbl_status.config(text="Deteniendo...", foreground="#FC8181")
+            self.lbl_status.config(text=t("status_stopping"), foreground="#FC8181")
             self.btn_stop.config(state=tk.DISABLED)
             # El botón de iniciar se reactivará cuando muera el hilo
 
     def _run_bot_thread(self):
         try:
             if not RealRacingBot:
-                self.log_message("Error: Clase RealRacingBot no encontrada.")
+                self.log_message(t("msg_bot_class_not_found"))
                 return
 
             self.bot_instance = RealRacingBot(
@@ -567,7 +645,7 @@ class BotGUI:
             )
             self.bot_instance.run()
         except Exception as e:
-            self.log_message(f"Error crítico en bot: {e}")
+            self.log_message(t("msg_bot_error", error=str(e)))
         finally:
             # Log Session End
             if self.session_start_time:
@@ -576,7 +654,7 @@ class BotGUI:
                 self.logger.log_session(self.session_start_time, end_time, self.current_session_gold)
                 self.session_start_time = None # Stop timer loop logic check
 
-            self.log_message("Bot detenido.")
+            self.log_message(t("msg_bot_stopped"))
             self.root.after(0, self._reset_buttons)
 
         refresh_chart()
@@ -605,11 +683,11 @@ class BotGUI:
                 if img is not None:
                     # Save using OpenCV
                     cv2.imwrite(filename, img)
-                    self.log_message(f"📸 Captura guardada: {filename}")
+                    self.log_message(t("msg_capture_saved", filename=filename))
                 else:
-                    self.log_message("❌ Error: No se pudo capturar imagen.")
+                    self.log_message(t("msg_capture_error"))
             except Exception as e:
-                self.log_message(f"❌ Error al capturar: {e}")
+                self.log_message(t("msg_capture_failed", error=str(e)))
         
         # Ejecutar en hilo para no bloquear GUI
         threading.Thread(target=save_task, daemon=True).start()
@@ -624,7 +702,7 @@ class BotGUI:
 
         popup = tk.Toplevel(self.root)
         self.chart_window = popup
-        popup.title("Historial de Ganancias")
+        popup.title(t("chart_title"))
         popup.geometry("600x450")
         popup.configure(bg="#102A43")
         
@@ -637,7 +715,7 @@ class BotGUI:
                             command=lambda: navigate(7)) # Mas antiguo (+offset)
         btn_prev.pack(side=tk.LEFT)
         
-        lbl_range = tk.Label(header, text="Últimos 7 Días", font=("Segoe UI", 16, "bold"), 
+        lbl_range = tk.Label(header, text=t("chart_last_days"), font=("Segoe UI", 16, "bold"), 
                             bg="#102A43", fg="#D9E2EC")
         lbl_range.pack(side=tk.LEFT, expand=True)
         
@@ -668,7 +746,7 @@ class BotGUI:
             
             # Actualizar etiqueta de rango
             if self.chart_offset == 0:
-                lbl_range.config(text="Últimos 7 Días")
+                lbl_range.config(text=t("chart_last_days"))
                 btn_next.config(state=tk.DISABLED, fg="#243B53")
             else:
                 end_date = datetime.now() - timedelta(days=self.chart_offset)
@@ -677,7 +755,7 @@ class BotGUI:
                 btn_next.config(state=tk.NORMAL, fg="#4FD1C5")
 
             if not data:
-                canvas.create_text(cw/2, ch/2, text="Sin datos...", fill="#829AB1", font=("Segoe UI", 12))
+                canvas.create_text(cw/2, ch/2, text=t("chart_no_data"), fill="#829AB1", font=("Segoe UI", 12))
             else:
                 # Max para normalizar
                 max_val = max(d[1] for d in data) if data else 1
@@ -745,7 +823,7 @@ class BotGUI:
         
         popup = tk.Toplevel(self.root)
         self.calendar_window = popup
-        popup.title("Calendario de Ganancias")
+        popup.title(t("calendar_title"))
         popup.geometry("500x420")
         popup.configure(bg="#102A43")
         
@@ -777,7 +855,8 @@ class BotGUI:
         # Dias de la semana
         days_header = tk.Frame(cal_frame, bg="#1E3246")
         days_header.pack(fill=tk.X)
-        for day_name in ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"]:
+        calendar_days = t("calendar_days")
+        for day_name in calendar_days:
             tk.Label(days_header, text=day_name, width=6, font=("Segoe UI", 9, "bold"),
                     bg="#1E3246", fg="#829AB1").pack(side=tk.LEFT, padx=2)
         
@@ -820,8 +899,7 @@ class BotGUI:
             except: return
 
             year, month = current_date
-            month_names = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-                          "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+            month_names = t("calendar_months")
             lbl_month.config(text=f"{month_names[month]} {year}")
             
             # Obtener datos del mes
@@ -944,20 +1022,20 @@ class BotGUI:
     def _ml_train(self):
         """Inicia entrenamiento del modelo."""
         if not self.ml_trainer:
-            self.lbl_ml_status.config(text="Error: ML no inicializado")
+            self.lbl_ml_status.config(text=t("ml_error_not_initialized"))
             return
         
         if self.ml_trainer.is_training:
-            self.lbl_ml_status.config(text="Entrenamiento en curso...")
+            self.lbl_ml_status.config(text=t("ml_status_training"))
             return
         
         samples = self.ml_trainer.get_sample_count()
         if samples < 10:
-            self.lbl_ml_status.config(text=f"Error: Solo {samples} muestras (min 10)")
+            self.lbl_ml_status.config(text=t("ml_error_min_samples", count=samples))
             return
         
         self.btn_ml_train.config(state=tk.DISABLED)
-        self.lbl_ml_status.config(text="Iniciando entrenamiento...")
+        self.lbl_ml_status.config(text=t("ml_training_started"))
         
         def on_complete(success, accuracy):
             self.root.after(0, lambda: self._on_training_complete(success, accuracy))
@@ -986,19 +1064,19 @@ class BotGUI:
         """Callback cuando termina el entrenamiento."""
         self.btn_ml_train.config(state=tk.NORMAL)
         if success:
-            self.lbl_ml_status.config(text=f"Completado! Accuracy: {accuracy:.1f}%")
+            self.lbl_ml_status.config(text=t("ml_training_complete", accuracy=f"{accuracy:.1f}"))
             self.lbl_ml_accuracy.config(text=f"{accuracy:.1f}%")
         else:
-            self.lbl_ml_status.config(text="Error en entrenamiento")
+            self.lbl_ml_status.config(text=t("ml_training_error"))
         self._update_ml_stats()
     
     def _ml_test(self):
         """Ejecuta test del modelo."""
         if not self.ml_evaluator:
-            self.lbl_ml_status.config(text="Error: ML no inicializado")
+            self.lbl_ml_status.config(text=t("ml_error_not_initialized"))
             return
         
-        self.lbl_ml_status.config(text="Evaluando modelo...")
+        self.lbl_ml_status.config(text=t("ml_status_evaluating"))
         self.btn_ml_test.config(state=tk.DISABLED)
         
         def _run_test():
@@ -1024,25 +1102,25 @@ class BotGUI:
     def _ml_toggle_monitor(self):
         """Activa/desactiva monitor en tiempo real."""
         if not self.ml_monitor:
-            self.lbl_ml_status.config(text="Error: ML no inicializado")
-            self.log_message("❌ Error: ML no inicializado")
+            self.lbl_ml_status.config(text=t("ml_error_not_initialized"))
+            self.log_message(t("ml_error_not_initialized"))
             return
         
         if self.ml_monitor.is_active:
             self.ml_monitor.stop()
-            self.btn_ml_activate.config(text="⚡ Activar Monitor", bg="#805AD5")
-            self.lbl_ml_status.config(text="Monitor detenido")
-            self.log_message("🧠 Monitor de ML detenido.")
+            self.btn_ml_activate.config(text=t("btn_ml_activate"), bg="#805AD5")
+            self.lbl_ml_status.config(text=t("ml_status_monitor_stopped"))
+            self.log_message(t("ml_status_monitor_stopped"))
             self.lbl_ml_concordance.config(text="--", fg="#A0AEC0")
         else:
             if not self.ml_monitor.model.is_trained:
-                self.lbl_ml_status.config(text="Error: Modelo no entrenado")
-                self.log_message("❌ Error: Modelo no entrenado")
+                self.lbl_ml_status.config(text=t("ml_error_not_trained"))
+                self.log_message(t("ml_error_not_trained"))
                 return
             self.ml_monitor.start(prediction_callback=self.visualize_prediction)
-            self.btn_ml_activate.config(text="⏹ Detener Monitor", bg="#C53030")
-            self.lbl_ml_status.config(text="Monitor activo")
-            self.log_message("🧠 Monitor de ML activado.")
+            self.btn_ml_activate.config(text=t("btn_ml_deactivate"), bg="#C53030")
+            self.lbl_ml_status.config(text=t("ml_status_monitor_active"))
+            self.log_message(t("ml_status_monitor_active"))
             self._update_monitor_stats()
     
     def _update_monitor_stats(self):
@@ -1069,7 +1147,7 @@ class BotGUI:
         self.is_bot_running = False
         self.btn_start.config(state=tk.NORMAL)
         self.btn_stop.config(state=tk.DISABLED)
-        self.lbl_status.config(text="Detenido", foreground="#A0AEC0")
+        self.lbl_status.config(text=t("status_stopped"), foreground="#A0AEC0")
 
     # open_scrcpy removed
 
