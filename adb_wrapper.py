@@ -237,7 +237,10 @@ class ADBWrapper:
         out = self._run_command(["settings", "get", "global", "wifi_on"])
         if out:
             try:
-                return int(out.strip()) == 1
+                # Valor 1 o 2 = WiFi activado (varía según dispositivo)
+                # Valor 0 = WiFi desactivado
+                val = int(out.strip())
+                return val >= 1
             except ValueError:
                 pass
         return None
